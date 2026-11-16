@@ -2,7 +2,7 @@ import { Component, StrictMode, Suspense, lazy, useEffect, useMemo, useRef, useS
 import { createRoot } from 'react-dom/client'
 import {
   ArrowRight, ArrowUpDown, ArrowUpRight, Atom, ChevronDown, CloudRain, Compass, Database, Download, ExternalLink, Eye,
-  Cloud, Droplets, Gauge, Info, Languages, Leaf, Maximize2, Pause, Play, RotateCcw, Search, Settings2, Share2, Shuffle, SkipBack, SkipForward, Snowflake, Sprout, Square, Sun, Thermometer, Volume2, Waves, Wind, X,
+  Cloud, Droplets, Gauge, Info, Languages, Leaf, Maximize2, Pause, Play, RotateCcw, Search, Settings2, Share2, Shuffle, Snowflake, Sprout, Square, Sun, Thermometer, Volume2, Waves, Wind, X,
 } from 'lucide-react'
 import {
   Area, AreaChart, CartesianGrid, Line, ReferenceLine, ResponsiveContainer,
@@ -284,7 +284,6 @@ function App() {
   const [temperaturePointLoading, setTemperaturePointLoading] = useState(false)
   const [temperaturePointError, setTemperaturePointError] = useState<string | null>(null)
   const [climateLoading, setClimateLoading] = useState(true)
-  const [dataIndex, setDataIndex] = useState(-1)
   const [weatherMode, setWeatherMode] = useState<WeatherMode>(initialWeatherMode)
   const [weatherLocationId, setWeatherLocationId] = useState('miami')
   const [focusCityId, setFocusCityId] = useState<string | null>(() => {
@@ -302,7 +301,6 @@ function App() {
   const [datasetLoading, setDatasetLoading] = useState(false)
   const [weatherError, setWeatherError] = useState<string | null>(null)
   const [weatherRetry, setWeatherRetry] = useState(0)
-  const [timelinePlaying, setTimelinePlaying] = useState(false)
   const [highContrast, setHighContrast] = useState(() => readPreference('earth-jukebox.high-contrast') === 'true')
   const [reducedMotion, setReducedMotion] = useState(() => readPreference('earth-jukebox.reduced-motion') === 'true')
   const [coordinatesVisible, setCoordinatesVisible] = useState(() => readPreference('earth-jukebox.coordinates') !== 'false')
@@ -406,9 +404,7 @@ function App() {
         .some((value) => value?.toLocaleLowerCase().includes(datasetSearchQuery))
     })
     : []
-  const selectedIndex = series.length
-    ? Math.max(0, Math.min(dataIndex < 0 ? series.length - 1 : dataIndex, series.length - 1))
-    : -1
+  const selectedIndex = series.length - 1
   const measurement = selectedIndex >= 0 ? series[selectedIndex] : undefined
   const currentYear = measurement ? formatPointLabel(measurement, tx) : t('latest')
   const partialPeriod = measurementPeriod(measurement)
@@ -546,7 +542,6 @@ function App() {
     setSoundTrack({ dataset: datasetKey, mode: weatherMode, point, value: null })
     setSoundPlayerStatus('loading')
     setMapSoundRequest({ id: ++mapSoundRequestIdRef.current, dataset: datasetKey, mode: weatherMode, point })
-    setDataIndex(-1)
     const readingPointUnchanged = Math.abs(point.latitude - activePoint.latitude) < 0.00001
       && Math.abs(point.longitude - activePoint.longitude) < 0.00001
     if (datasetKey !== 'temperature' && !readingPointUnchanged) {
@@ -676,29 +671,12 @@ function App() {
     savePreference('earth-jukebox.accent', accent)
   }, [accent])
 
-  useEffect(() => {
-    if (!timelinePlaying || series.length < 2) return
-    const timer = window.setInterval(() => {
-      setDataIndex((index) => {
-        const current = index < 0 ? series.length - 1 : index
-        if (current >= series.length - 1) {
-          setTimelinePlaying(false)
-          return current
-        }
-        return current + 1
-      })
-    }, 1250)
-    return () => window.clearInterval(timer)
-  }, [timelinePlaying, series.length])
-
   const chooseDataset = (key: DatasetKey) => {
     setDatasetKey(key)
     setDatasetSearch('')
     setPowerGroupOpen(powerAtmosphereOrder.includes(key))
     setPowerTemperatureGroupOpen(powerTemperatureOrder.includes(key))
     setPowerLandGroupOpen(powerLandOrder.includes(key))
-    setDataIndex(-1)
-    setTimelinePlaying(false)
     const url = new URL(window.location.href)
     url.searchParams.set('dataset', key)
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
@@ -716,8 +694,6 @@ function App() {
 
   const changeWeatherMode = (mode: WeatherMode) => {
     setWeatherMode(mode)
-    setDataIndex(-1)
-    setTimelinePlaying(false)
     const url = new URL(window.location.href)
     url.searchParams.set('mode', mode)
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
@@ -729,8 +705,6 @@ function App() {
       const location = weatherLocations.find((item) => item.id === locationId)
       if (location) setMapCenter({ latitude: location.latitude, longitude: location.longitude })
     }
-    setDataIndex(-1)
-    setTimelinePlaying(false)
   }
 
   const downloadCurrentCsv = () => {
@@ -779,8 +753,6 @@ function App() {
     setFocusCityId(id)
     setLocationPin(null)
     setLocationSource(null)
-    setDataIndex(-1)
-    setTimelinePlaying(false)
     const url = new URL(window.location.href)
     url.searchParams.delete('lat')
     url.searchParams.delete('lon')
@@ -871,26 +843,6 @@ function App() {
     const next = Math.max(300, Math.min(700, Math.round(height)))
     setGlobeHeight(next)
     savePreference('earth-jukebox.globe-height', String(next))
-  }
-
-  const moveThroughData = (direction: -1 | 1) => {
-    if (!series.length) return
-    const start = dataIndex < 0 ? series.length - 1 : selectedIndex
-    const nextIndex = Math.max(0, Math.min(series.length - 1, start + direction))
-    setDataIndex(nextIndex)
-  }
-
-  const playTimeline = () => {
-    if (!series.length) return
-    if (selectedIndex >= series.length - 1) setDataIndex(0)
-    setTimelinePlaying((playing) => !playing)
-  }
-
-  const resetData = () => {
-    if (series.length) {
-      setDataIndex(series.length - 1)
-    }
-    setTimelinePlaying(false)
   }
 
   const statusLabel = payload?.status ?? definition.status
@@ -1205,7 +1157,6 @@ function App() {
                     dataset={datasetKey}
                     selectedYear={selectedYear}
                     dataAvailable={Boolean(measurement) || Boolean(matchingTemperaturePoint)}
-                    timelinePlaying={timelinePlaying}
                     reducedMotion={reducedMotion}
                     weatherMode={weatherMode}
                     weatherLocation={weatherLocation}
@@ -1282,14 +1233,6 @@ function App() {
         <section className="timeline-section panel" aria-labelledby="timeline-heading">
           <div className="timeline-top">
             <div className="timeline-title-group"><div className="timeline-icon"><Database size={16} /></div><div><span className="panel-label">{t('latest')}</span><h2 id="timeline-heading">{datasetKey === 'weather' ? t('recentWeather') : t('latest')}</h2></div></div>
-            <div className="timeline-actions">
-              <button className="quiet-button" onClick={() => moveThroughData(-1)} disabled={!series.length || selectedIndex <= 0} aria-label={t('previous')}><SkipBack size={15} /></button>
-              <button className={`button timeline-play ${timelinePlaying ? 'playing' : ''}`} onClick={playTimeline} disabled={series.length < 2} aria-label={timelinePlaying ? t('pauseTimeline') : t('playTimeline')}>
-                {timelinePlaying ? <Pause size={15} /> : <Play size={15} fill="currentColor" />} {timelinePlaying ? t('pauseTimeline') : t('playTimeline')}
-              </button>
-              <button className="quiet-button" onClick={() => moveThroughData(1)} disabled={!series.length || selectedIndex >= series.length - 1} aria-label={t('next')}><SkipForward size={15} /></button>
-              <button className="quiet-button reset-button" onClick={resetData} disabled={!series.length} aria-label={t('latest')}><RotateCcw size={14} /><span>{t('latest')}</span></button>
-            </div>
           </div>
           <div className="timeline-chart-wrap">
             <div className="chart-annotation"><span className="chart-current-mark" style={{ backgroundColor: activeColor }} /><strong>{t('latest')}</strong><span>{latestDisplay}</span><span className="annotation-note">{tx(datasetKey === 'weather' ? 'NASA POWER DAILY RECORD' : datasetKey === 'ocean' ? 'NASA/JPL MUR MONTHLY MAP SAMPLES' : datasetKey === 'co2' ? 'NASA OCO-2 GLOBAL SWATH SAMPLE' : isPowerMetric ? 'NASA POWER DAILY POINT SERIES' : 'NASA GISTEMP RECORD')}</span></div>

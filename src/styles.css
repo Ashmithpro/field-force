@@ -352,7 +352,6 @@ html.theme-light .compact-details { color: #324b5d; background: rgba(255,255,255
 .timeline-title-group { display: flex; align-items: center; gap: 10px; }
 .timeline-icon { width: 31px; height: 31px; border: 1px solid rgba(91, 212, 242, .25); border-radius: 4px; background: rgba(62, 162, 186, .08); display: grid; place-items: center; color: #7dcddc; }
 .timeline-title-group h2 { margin: 3px 0 0; color: #e5edf4; font: 600 13px 'Manrope'; }
-.timeline-actions { display: flex; align-items: center; gap: 7px; }
 .quiet-button { min-width: 29px; height: 28px; border-radius: 4px; gap: 5px; font-size: 9px; border: 1px solid transparent; }
 .csv-download { min-width: 58px; padding: 0 8px; white-space: nowrap; }
 .quiet-button:hover:not(:disabled) { background: rgba(127, 167, 193, .09); border-color: rgba(127, 167, 193, .17); color: #d6e9f4; }
@@ -474,8 +473,6 @@ html.high-contrast .nav-link, html.high-contrast .dataset-description, html.high
   .reading-meaning { grid-column: 2; grid-row: 2 / span 2; }
   .timeline-section { padding: 14px 12px 11px; }
   .timeline-top { align-items: flex-start; }
-  .timeline-actions { gap: 3px; }
-  .timeline-actions { flex-wrap: wrap; justify-content: flex-end; }
   .timeline-play { padding: 7px 8px; }
   .reset-button span { display: none; }
   .timeline-chart { height: 177px; }
@@ -515,7 +512,6 @@ html[dir="rtl"] .language-picker select { direction: rtl; }
   .point-reading-info { grid-row: 4; }
   .reading-meaning { grid-row: 4; }
   .timeline-top { flex-direction: column; }
-  .timeline-actions { width: 100%; justify-content: space-between; }
   .timeline-chart-wrap { padding: 7px 7px 7px; }
   .timeline-chart { height: 155px; }
   .annotation-note { display: none; }
@@ -734,7 +730,6 @@ body { font-size: 16px; line-height: 1.55; }
 
 .timeline-section { margin-top: 20px; padding: 20px 22px 16px; border-radius: 13px; }
 .timeline-title-group h2 { font-size: 18px; }
-.timeline-actions { gap: 9px; }
 .quiet-button { min-width: 40px; min-height: 40px; padding: 0 10px; font-size: 12px; }
 .timeline-play { min-height: 40px; padding: 8px 13px; font-size: 12px; }
 .timeline-chart-wrap { margin-top: 16px; padding: 11px 14px 10px; border-radius: 9px; }
@@ -821,7 +816,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .globe-legend { font-size: 10px; }
   .reading-panel { grid-template-columns: 1fr; }
   .timeline-top { align-items: flex-start; flex-direction: column; }
-  .timeline-actions { width: 100%; justify-content: space-between; }
   .timeline-play { padding: 8px 10px; }
   .timeline-chart-wrap { padding: 8px 7px; }
   .timeline-chart { height: 165px; }

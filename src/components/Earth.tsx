@@ -377,7 +377,6 @@ export default function Earth({
   dataset,
   selectedYear,
   dataAvailable,
-  timelinePlaying,
   reducedMotion,
   weatherMode = 'rain',
   weatherLocation,
@@ -399,7 +398,6 @@ export default function Earth({
   dataset: DatasetKey
   selectedYear: number
   dataAvailable: boolean
-  timelinePlaying: boolean
   reducedMotion: boolean
   weatherMode?: WeatherMode
   weatherLocation?: WeatherLocation
@@ -890,7 +888,7 @@ export default function Earth({
 
     map.setLayoutProperty('nasa-gpm-rain-layer', 'visibility', rainVisible ? 'visible' : 'none')
     map.setPaintProperty('nasa-gpm-rain-layer', 'raster-opacity', rainVisible ? weatherMode === 'storm' ? 0.54 : 0.84 : 0)
-    if (rainVisible && !timelinePlaying && rasterDatesRef.current.get('nasa-gpm-rain') !== rainDate) {
+    if (rainVisible && rasterDatesRef.current.get('nasa-gpm-rain') !== rainDate) {
       ;(map.getSource('nasa-gpm-rain') as RasterTileSource | undefined)?.setTiles([RAIN_TILE.replace('{date}', rainDate)])
       rasterDatesRef.current.set('nasa-gpm-rain', rainDate)
     }
@@ -918,7 +916,7 @@ export default function Earth({
     const showCityReferences = dataset !== 'weather'
     map.setLayoutProperty('city-reference-halo', 'visibility', showCityReferences ? 'visible' : 'none')
     map.setLayoutProperty('city-reference-markers', 'visibility', showCityReferences ? 'visible' : 'none')
-  }, [dataset, mapStatus, selectedRasterDate, selectedYear, timelinePlaying, weatherIndex, weatherMeasurements, weatherMode])
+  }, [dataset, mapStatus, selectedRasterDate, selectedYear, weatherIndex, weatherMeasurements, weatherMode])
 
   useEffect(() => {
     if (mapStatus !== 'ready') return
