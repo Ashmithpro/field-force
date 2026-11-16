@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#070b14" />
+    <meta name="description" content="Field Force turns NASA Earth science into an interactive map with readable values and plain-language explanations." />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>Field Force &mdash; Explore NASA Earth Data</title>
+    <style>
+      .startup-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; color: #eaf5fb; background: #070b14; font: 15px system-ui, sans-serif; }
+      .startup-card { width: min(100%, 480px); padding: 24px; border: 1px solid #294052; border-radius: 12px; background: #0d1723; }
+      .startup-card strong { display: block; margin-bottom: 8px; color: #91e7f5; }
+      .startup-card p { margin: 0; color: #aebfcb; line-height: 1.6; }
+      .startup-card button { margin-top: 18px; padding: 9px 13px; border: 0; border-radius: 6px; color: #06131b; background: #91e7f5; font-weight: 700; cursor: pointer; }
+      .startup-spinner { width: 36px; height: 36px; border: 2px solid #294052; border-top-color: #91e7f5; border-radius: 50%; animation: startup-spin .85s linear infinite; }
+      @keyframes startup-spin { to { transform: rotate(360deg); } }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root">
+      <main class="startup-screen" role="status" aria-live="polite" aria-busy="true">
+        <span class="startup-spinner" aria-hidden="true"></span>
+      </main>
+      <noscript><p role="alert" class="startup-screen">Enable JavaScript to open the interactive Earth view.</p></noscript>
+    </div>
+    <script type="module" id="app-module" src="/src/main.tsx"></script>
+    <script>
+      const showStartupFailure = () => {
+        const root = document.getElementById('root');
+        if (!root) return;
+        root.innerHTML = '<main class="startup-screen" role="alert"><div class="startup-card"><strong>The interactive view could not start.</strong><p>Check your connection, then reload the page.</p><button type="button" id="startup-reload">Reload page</button></div></main>';
+        document.getElementById('startup-reload')?.addEventListener('click', () => window.location.reload());
+      };
+      document.querySelectorAll('script[type="module"][src]').forEach((script) => script.addEventListener('error', showStartupFailure));
+      window.setTimeout(() => {
+        const root = document.getElementById('root');
+        const startup = root?.querySelector('.startup-screen[role="status"]');
+        if (!startup) return;
+        startup.innerHTML = '<div class="startup-card"><strong>The interactive view is taking longer than expected.</strong><p>Check your connection, then try reloading.</p><button type="button" id="startup-timeout-reload">Reload page</button></div>';
+        document.getElementById('startup-timeout-reload')?.addEventListener('click', () => window.location.reload());
+      }, 15000);
+    </script>
+  </body>
+</html>
