@@ -10,11 +10,11 @@ import {
 } from 'recharts'
 import WeatherControls from './components/WeatherControls'
 import { mapSoundDurationMs, pauseMapSound, playMapReadingSound, resumeMapSound, setMapSoundVolume, stopMapSound, unlockMapSound } from './audio/sonification'
-import { cityLocations, datasets, formatValue, weatherDefinitions, weatherLocations } from './data/datasets'
+import { cityLocations, convertTemperatureValue, datasets, formatValue, weatherDefinitions, weatherLocations } from './data/datasets'
 import { loadDataset, loadLatestPointAirTemperature } from './services/dataService'
 import { LanguageProvider, languages, useLanguage } from './i18n'
 import { readPreference, removePreference, savePreference } from './storage'
-import type { DatasetKey, DatasetPayload, GeoPoint, Measurement, WeatherMode } from './types'
+import type { DatasetKey, DatasetPayload, GeoPoint, Measurement, TemperatureUnit, WeatherMode } from './types'
 import './styles.css'
 
 const Earth = lazy(() => import('./components/Earth'))
@@ -132,7 +132,17 @@ function initialLocationPin(): GeoPoint | null {
     ? { latitude, longitude }
     : null
 }
-const chartFormatter = (value: number, key: DatasetKey) => {
+const temperatureDatasetKeys: DatasetKey[] = ['temperature', 'ocean', 'air-temperature', 'min-air-temperature', 'max-air-temperature', 'temperature-range', 'wet-bulb-temperature', 'dew-point']
+const isTemperatureDataset = (key: DatasetKey) => temperatureDatasetKeys.includes(key)
+const displayedUnit = (key: DatasetKey, temperatureUnit: TemperatureUnit) => {
+  if (!isTemperatureDataset(key)) return datasets[key].unit
+  const degree = temperatureUnit === 'fahrenheit' ? '°F' : '°C'
+  if (key === 'temperature') return `${degree} anomaly`
+  if (key === 'temperature-range') return `${degree} range`
+  return degree
+}
+const chartFormatter = (value: number, key: DatasetKey, temperatureUnit: TemperatureUnit) => {
+  const displayValue = convertTemperatureValue(value, key, temperatureUnit)
   if (key === 'co2') return `${value.toFixed(0)}`
   if (key === 'aerosol-depth') return value.toFixed(2)
   if (key === 'humidity' || key === 'cloud-cover' || key === 'solar-radiation') return value.toFixed(0)
@@ -142,7 +152,7 @@ const chartFormatter = (value: number, key: DatasetKey) => {
   if (key === 'soil-wetness') return value.toFixed(2)
   if (key === 'land-evaporation' || key === 'transpiration-energy') return value.toFixed(1)
   if (key === 'wind-speed-2m') return value.toFixed(1)
-  if (key === 'air-temperature' || key === 'min-air-temperature' || key === 'max-air-temperature' || key === 'temperature-range' || key === 'wet-bulb-temperature' || key === 'dew-point') return value.toFixed(1)
+  if (isTemperatureDataset(key)) return displayValue.toFixed(1)
   return value.toFixed(1)
 }
 const localizedMonthName = (month: number, width: 'short' | 'long' = 'short') => new Intl.DateTimeFormat(document.documentElement.lang || 'en', { month: width, timeZone: 'UTC' }).format(new Date(Date.UTC(2020, month, 1)))
@@ -162,7 +172,7 @@ const formatPointLabel = (point?: Measurement, translate: (text: string) => stri
   return translate(point.label ?? String(point.year))
 }
 const coordinateLabel = (value: number, positive: string, negative: string) => `${Math.abs(value).toFixed(1)}Â° ${value >= 0 ? positive : negative}`
-const formatMeasurement = (point: Measurement, dataset: DatasetKey, weatherMode: WeatherMode) => `${point.lowerBound ? 'â‰¥' : ''}${formatValue(point.value, dataset, weatherMode)}`
+const formatMeasurement = (point: Measurement, dataset: DatasetKey, weatherMode: WeatherMode, temperatureUnit: TemperatureUnit) => `${point.lowerBound ? 'â‰¥' : ''}${formatValue(point.value, dataset, weatherMode, temperatureUnit)}`
 
 const countryRegionCodes: Record<string, string> = { 'United States': 'US', 'United Kingdom': 'GB', Egypt: 'EG', India: 'IN', Philippines: 'PH', Japan: 'JP', Australia: 'AU' }
 
@@ -214,14 +224,14 @@ function DatasetIcon({ dataset, size = 17 }: { dataset: DatasetKey; size?: numbe
   return <Leaf size={size} />
 }
 
-function DatasetOption({ dataset, selected, onSelect }: { dataset: DatasetKey; selected: boolean; onSelect: (key: DatasetKey) => void }) {
+function DatasetOption({ dataset, selected, onSelect, temperatureUnit }: { dataset: DatasetKey; selected: boolean; onSelect: (key: DatasetKey) => void; temperatureUnit: TemperatureUnit }) {
   const { datasetName, tx } = useLanguage()
   const item = datasets[dataset]
   const label = datasetName(dataset)
   const sourceFamily = dataset === 'weather' || powerDatasetOrder.includes(dataset)
     ? 'NASA POWER'
     : item.source.split('Â·')[0].trim()
-  const unitLabel = dataset === 'weather' ? 'rain mm/day Â· wind m/s' : item.unit
+  const unitLabel = dataset === 'weather' ? 'rain mm/day Â· wind m/s' : displayedUnit(dataset, temperatureUnit)
   const subtitle = dataset === 'weather'
     ? tx('NASA POWER Â· rain Â· wind')
     : powerDatasetOrder.includes(dataset)
@@ -236,12 +246,13 @@ function DatasetOption({ dataset, selected, onSelect }: { dataset: DatasetKey; s
   )
 }
 
-function CustomTooltip({ active, payload, label, dataset, weatherMode }: {
+function CustomTooltip({ active, payload, label, dataset, weatherMode, temperatureUnit }: {
   active?: boolean
   payload?: Array<{ payload: Measurement }>
   label?: number
   dataset: DatasetKey
   weatherMode: WeatherMode
+  temperatureUnit: TemperatureUnit
 }) {
   if (!active || !payload?.[0]) return null
   const { t, tx } = useLanguage()
@@ -249,7 +260,7 @@ function CustomTooltip({ active, payload, label, dataset, weatherMode }: {
   return (
     <div className="chart-tooltip">
       <span>{typeof labelText === 'string' ? formatPointLabel(payload[0].payload, tx) : labelText}</span>
-      <strong>{formatMeasurement(payload[0].payload, dataset, weatherMode)}</strong>
+      <strong>{formatMeasurement(payload[0].payload, dataset, weatherMode, temperatureUnit)}</strong>
       {dataset === 'weather' && weatherMode === 'storm' && payload[0].payload.windSpeed !== undefined ? <small>{t('wind')} {payload[0].payload.windSpeed.toFixed(1)} m/s</small> : null}
     </div>
   )
@@ -259,6 +270,7 @@ function App() {
   const { language, setLanguage, t, tx, datasetName } = useLanguage()
   const heroTitleWords = 'FIELD FORCE'.split(/\s+/)
   const [datasetKey, setDatasetKey] = useState<DatasetKey>(initialDataset)
+  const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>(() => readPreference('earth-jukebox.temperature-unit') === 'fahrenheit' ? 'fahrenheit' : 'celsius')
   const [datasetSearch, setDatasetSearch] = useState('')
   const [activeNav, setActiveNav] = useState(() => {
     const requested = window.location.hash.slice(1)
@@ -638,6 +650,10 @@ function App() {
   }, [highContrast])
 
   useEffect(() => {
+    savePreference('earth-jukebox.temperature-unit', temperatureUnit)
+  }, [temperatureUnit])
+
+  useEffect(() => {
     savePreference('earth-jukebox.reduced-motion', String(reducedMotion))
   }, [reducedMotion])
 
@@ -891,11 +907,12 @@ function App() {
     : measurement && thermalPointDatasets.includes(datasetKey)
       ? measurement.value < 0 ? '#90c9ff' : measurement.value === 0 ? '#ead69c' : datasetKey === 'dew-point' ? '#78d9cf' : '#ff9873'
       : activeColor
+  const freezingLabel = temperatureUnit === 'fahrenheit' ? '32 °F' : '0 °C'
   const readingColorNote = thermalPointDatasets.includes(datasetKey)
-    ? datasetKey === 'dew-point' ? 'frost blue â†” dew aqua' : 'ice blue <0 Â°C Â· fire orange >0 Â°C'
+    ? datasetKey === 'dew-point' ? 'frost blue â†” dew aqua' : `ice blue <${freezingLabel} Â· fire orange >${freezingLabel}`
     : 'dataset color Â· size = low â†’ high'
-  const latestDisplay = measurement ? formatMeasurement(measurement, datasetKey, weatherMode) : (payload || weatherError) && !dataIsLoading ? t('noData') : t('loading')
-  const temperaturePointDisplay = matchingTemperaturePoint ? formatValue(matchingTemperaturePoint.value, 'air-temperature') : null
+  const latestDisplay = measurement ? formatMeasurement(measurement, datasetKey, weatherMode, temperatureUnit) : (payload || weatherError) && !dataIsLoading ? t('noData') : t('loading')
+  const temperaturePointDisplay = matchingTemperaturePoint ? formatValue(matchingTemperaturePoint.value, 'air-temperature', 'rain', temperatureUnit) : null
   const temperaturePointPending = datasetKey === 'temperature' && Boolean(temperatureLocation) && (temperaturePointLoading || mapSoundRequest?.dataset === 'temperature')
   const readingPanelDisplay = datasetKey === 'temperature' && temperatureLocation
     ? temperaturePointPending ? t('updating') : temperaturePointDisplay ?? (temperaturePointError ? t('noData') : t('loading'))
@@ -1029,7 +1046,7 @@ function App() {
     ? soundTrack.dataset === 'weather' ? `${datasetName('weather')} · ${t(soundTrack.mode)}` : datasetName(soundTrack.dataset)
     : displayDatasetName
   const playerValue = soundTrack && soundTrack.value !== null
-    ? formatValue(soundTrack.value, soundTrack.dataset, soundTrack.mode)
+    ? formatValue(soundTrack.value, soundTrack.dataset, soundTrack.mode, temperatureUnit)
     : null
   const playerStatusLabel = soundPlayerStatus === 'loading'
     ? t('updating')
@@ -1117,18 +1134,18 @@ function App() {
               <div className="dataset-search"><Search size={14} aria-hidden="true" /><label className="sr-only" htmlFor="dataset-search-input">{t('searchDatasets', { count: datasetOrder.length })}</label><input id="dataset-search-input" type="search" aria-controls="dataset-search-results" placeholder={t('searchDatasets', { count: datasetOrder.length })} value={datasetSearch} onChange={(event) => setDatasetSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setDatasetSearch(''); event.currentTarget.blur() } }} /><button type="button" onClick={() => setDatasetSearch('')} aria-label={t('searchDatasets', { count: datasetOrder.length })} hidden={!datasetSearch}><X size={13} /></button></div>
               {datasetSearchQuery ? <div id="dataset-search-results" className="dataset-search-results" role="group" aria-label={`${matchingDatasets.length} ${t('datasets')}`}>
                 <div className="dataset-search-count" role="status" aria-live="polite">{t('resultCount', { count: matchingDatasets.length, label: t(matchingDatasets.length === 1 ? 'dataset' : 'datasets') })}</div>
-                {matchingDatasets.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} />)}
+                {matchingDatasets.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} temperatureUnit={temperatureUnit} />)}
                 {!matchingDatasets.length && <span className="dataset-search-empty">{t('noSearchMatches')}</span>}
               </div> : <>
                 <div className="dataset-list" role="group" aria-label={t('datasets')}>
-                  {coreDatasetOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} />)}
+                  {coreDatasetOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} temperatureUnit={temperatureUnit} />)}
                 </div>
               <details className={`dataset-more ${powerAtmosphereOrder.includes(datasetKey) ? 'has-selection' : ''}`} open={powerGroupOpen}>
                 <summary onClick={(event) => { event.preventDefault(); setPowerGroupOpen((open) => !open) }} aria-expanded={powerGroupOpen}>
                   <span>{t('powerAtmosphere')}</span><small>{powerAtmosphereOrder.length}</small><ChevronDown size={13} />
                 </summary>
                 {powerGroupOpen && <div className="dataset-more-list" role="group" aria-label={tx("NASA POWER atmosphere datasets")}>
-                  {powerAtmosphereOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} />)}
+                  {powerAtmosphereOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} temperatureUnit={temperatureUnit} />)}
                 </div>}
               </details>
               <details className={`dataset-more ${powerTemperatureOrder.includes(datasetKey) ? 'has-selection' : ''}`} open={powerTemperatureGroupOpen}>
@@ -1136,7 +1153,7 @@ function App() {
                   <span>{t('powerTemperature')}</span><small>{powerTemperatureOrder.length}</small><ChevronDown size={13} />
                 </summary>
                 {powerTemperatureGroupOpen && <div className="dataset-more-list" role="group" aria-label={tx("NASA POWER temperature datasets")}>
-                  {powerTemperatureOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} />)}
+                  {powerTemperatureOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} temperatureUnit={temperatureUnit} />)}
                 </div>}
               </details>
               <details className={`dataset-more ${powerLandOrder.includes(datasetKey) ? 'has-selection' : ''}`} open={powerLandGroupOpen}>
@@ -1144,7 +1161,7 @@ function App() {
                   <span>{t('powerLandWater')}</span><small>{powerLandOrder.length}</small><ChevronDown size={13} />
                 </summary>
                 {powerLandGroupOpen && <div className="dataset-more-list" role="group" aria-label={tx("NASA POWER land-water datasets")}>
-                  {powerLandOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} />)}
+                  {powerLandOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} temperatureUnit={temperatureUnit} />)}
                 </div>}
               </details>
               </>}
@@ -1233,9 +1250,9 @@ function App() {
                         ? <><span className="weather-scale-key"><i className="weather-rain-gradient" /> {tx("Rain Â· mm/day")}</span><span className="weather-globe-note">{tx("Wind Â· m/s")}</span></>
                         : null
                   : datasetKey === 'temperature'
-                    ? <><span className="weather-scale-key"><i className="surface-temperature-gradient" /> {tx("Global anomaly Â· Â°C")}</span><span className="weather-globe-note">{tx("NASA AIRS map Â· 2002+")}</span>{matchingTemperaturePoint && <span className="power-reading-key" style={{ '--reading-color': readingColor } as React.CSSProperties}><i /> {t('reading')} · {datasetName('air-temperature')} · NASA POWER</span>}</>
+                    ? <><span className="weather-scale-key"><i className="surface-temperature-gradient" /> {tx(`Global anomaly · ${temperatureUnit === 'fahrenheit' ? '°F' : '°C'}`)}</span><span className="weather-globe-note">{tx("NASA AIRS map Â· 2002+")}</span>{matchingTemperaturePoint && <span className="power-reading-key" style={{ '--reading-color': readingColor } as React.CSSProperties}><i /> {t('reading')} · {datasetName('air-temperature')} · NASA POWER</span>}</>
                     : datasetKey === 'ocean'
-                      ? <><span className="weather-scale-key"><i className="ocean-temperature-gradient" /> {tx("Sea-surface temperature Â· Â°C")}</span><span className="weather-globe-note">{tx("NASA/JPL MUR Â· daily")}</span></>
+                      ? <><span className="weather-scale-key"><i className="ocean-temperature-gradient" /> {tx(`Sea-surface temperature · ${temperatureUnit === 'fahrenheit' ? '°F' : '°C'}`)}</span><span className="weather-globe-note">{tx("NASA/JPL MUR Â· daily")}</span></>
                         : datasetKey === 'co2'
                           ? <><span className="weather-scale-key"><i className="co2-gradient" /> {tx("Column COâ‚‚ Â· 380â€“480 ppm")}</span><span className="weather-globe-note">{tx("NASA OCO-2 Â· sampled global swaths")}</span></>
                           : datasetKey === 'transpiration-energy'
@@ -1249,7 +1266,7 @@ function App() {
             <aside className="reading-panel panel" aria-label={t('reading')}>
               <div className="panel-heading"><span className="panel-index">03</span><div><span className="panel-label">{t('reading')}</span></div><span className="mode-tag">{tx(statusLabel)}</span></div>
               <div className="reading-primary" style={{ '--dataset-color': activeColor } as React.CSSProperties} aria-live="polite">
-                <span className="reading-year">{t('latest')}</span>
+                <div className="reading-heading-row"><span className="reading-year">{t('latest')}</span>{isTemperatureDataset(datasetKey) && <div className="temperature-unit-switch" role="group" aria-label={tx('Temperature units')}><button type="button" aria-pressed={temperatureUnit === 'celsius'} onClick={() => setTemperatureUnit('celsius')} title={tx('Celsius')}>°C</button><button type="button" aria-pressed={temperatureUnit === 'fahrenheit'} onClick={() => setTemperatureUnit('fahrenheit')} title={tx('Fahrenheit')}>°F</button></div>}</div>
                 <span className="reading-value">{readingPanelDisplay}</span>
                 <span className="reading-name">{datasetKey === 'temperature' && temperatureLocation ? readingPanelName : tx(readingPanelName)}</span>
                 {temperaturePointDisplay && <span className="reading-context">{tx('NASA GISTEMP Â· global anomaly')}: {latestDisplay}</span>}
@@ -1282,9 +1299,9 @@ function App() {
                   <defs><linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={activeColor} stopOpacity={0.24} /><stop offset="94%" stopColor={activeColor} stopOpacity={0} /></linearGradient></defs>
                   <CartesianGrid stroke="#253344" strokeDasharray="2 6" vertical={false} />
                   <XAxis dataKey="chartX" type="number" domain={['dataMin', 'dataMax']} tickCount={6} tickFormatter={datasetKey === 'weather' ? (value: number) => { const point = series[Math.max(0, Math.min(series.length - 1, Math.round(value)))]; return point ? formatPointLabel(point, tx) : '' } : undefined} tickLine={false} axisLine={false} tick={{ fill: '#a7b7c7', fontSize: 12, fontFamily: 'DM Mono' }} minTickGap={24} />
-                  <YAxis yAxisId="rain" width={50} domain={['auto', 'auto']} tickFormatter={(value: number) => chartFormatter(value, datasetKey)} tickLine={false} axisLine={false} tick={{ fill: '#a7b7c7', fontSize: 12, fontFamily: 'DM Mono' }} />
+                  <YAxis yAxisId="rain" width={50} domain={['auto', 'auto']} tickFormatter={(value: number) => chartFormatter(value, datasetKey, temperatureUnit)} tickLine={false} axisLine={false} tick={{ fill: '#a7b7c7', fontSize: 12, fontFamily: 'DM Mono' }} />
                   {datasetKey === 'weather' && weatherMode === 'storm' && <YAxis yAxisId="wind" orientation="right" width={42} domain={[0, 25]} tickFormatter={(value: number) => value.toFixed(0)} tickLine={false} axisLine={false} tick={{ fill: '#c1b6ed', fontSize: 11, fontFamily: 'DM Mono' }} />}
-                  <Tooltip content={<CustomTooltip dataset={datasetKey} weatherMode={weatherMode} />} cursor={{ stroke: '#dbe8f4', strokeOpacity: 0.28, strokeDasharray: '3 5' }} />
+                  <Tooltip content={<CustomTooltip dataset={datasetKey} weatherMode={weatherMode} temperatureUnit={temperatureUnit} />} cursor={{ stroke: '#dbe8f4', strokeOpacity: 0.28, strokeDasharray: '3 5' }} />
                   {measurement && <ReferenceLine yAxisId="rain" x={measurement.chartX ?? measurement.year} stroke="#eef7ff" strokeOpacity={0.62} strokeDasharray="3 5" />}
                   <Area yAxisId="rain" type="monotone" dataKey="value" stroke="none" fill="url(#chart-fill)" isAnimationActive={false} />
                   <Line yAxisId="rain" type="monotone" dataKey="value" stroke={activeColor} strokeWidth={2} dot={false} activeDot={{ r: 4, fill: activeColor, stroke: '#07111e', strokeWidth: 2 }} isAnimationActive={false} />
@@ -1298,7 +1315,7 @@ function App() {
 
         <details className="table-disclosure" id="data-notes">
           <summary><span><Database size={14} /> {t('dataTable')}</span><ChevronDown size={15} /></summary>
-          <div className="data-table-scroll"><table><caption>{displayDatasetName} · {tx(definition.unit)}</caption><thead><tr><th scope="col">{t('timestamp')}</th><th scope="col">{datasetKey === 'weather' && weatherMode === 'storm' ? t('rain') : t('value')}</th>{datasetKey === 'weather' && weatherMode === 'storm' && <th scope="col">{t('wind')} (m/s)</th>}<th scope="col">{t('record')}</th></tr></thead><tbody>{series.map((point, index) => <tr key={`${point.label ?? point.year}-${index}`}><th scope="row">{formatPointLabel(point, tx)}</th><td>{formatMeasurement(point, datasetKey, weatherMode)}</td>{datasetKey === 'weather' && weatherMode === 'storm' && <td>{point.windSpeed?.toFixed(1) ?? '—'}</td>}<td>{tx(payload?.status ?? t('loading'))}</td></tr>)}</tbody></table></div>
+          <div className="data-table-scroll"><table><caption>{displayDatasetName} · {tx(displayedUnit(datasetKey, temperatureUnit))}</caption><thead><tr><th scope="col">{t('timestamp')}</th><th scope="col">{datasetKey === 'weather' && weatherMode === 'storm' ? t('rain') : t('value')}</th>{datasetKey === 'weather' && weatherMode === 'storm' && <th scope="col">{t('wind')} (m/s)</th>}<th scope="col">{t('record')}</th></tr></thead><tbody>{series.map((point, index) => <tr key={`${point.label ?? point.year}-${index}`}><th scope="row">{formatPointLabel(point, tx)}</th><td>{formatMeasurement(point, datasetKey, weatherMode, temperatureUnit)}</td>{datasetKey === 'weather' && weatherMode === 'storm' && <td>{point.windSpeed?.toFixed(1) ?? '—'}</td>}<td>{tx(payload?.status ?? t('loading'))}</td></tr>)}</tbody></table></div>
         </details>
 
         <details className="compact-details" id="how-it-works">
@@ -1374,6 +1391,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode; labels: AppError
       'earth-jukebox.globe-height',
       'earth-jukebox.theme',
       'earth-jukebox.accent',
+      'earth-jukebox.temperature-unit',
     ].forEach(removePreference)
     window.location.reload()
   }

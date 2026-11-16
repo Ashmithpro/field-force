@@ -1,4 +1,4 @@
-import type { CityLocation, DatasetDefinition, DatasetKey, Measurement, WeatherLocation, WeatherMode } from '../types'
+import type { CityLocation, DatasetDefinition, DatasetKey, Measurement, TemperatureUnit, WeatherLocation, WeatherMode } from '../types'
 
 export const cityLocations: CityLocation[] = [
   { id: 'los-angeles', city: 'Los Angeles', country: 'United States', latitude: 34.0522, longitude: -118.2437 },
@@ -371,26 +371,36 @@ export function nearestMeasurement(measurements: Measurement[], year: number): M
   measurements[0])
 }
 
-export function formatValue(value: number, key: DatasetKey, weatherMode: WeatherMode = 'rain'): string {
+export function convertTemperatureValue(value: number, key: DatasetKey, temperatureUnit: TemperatureUnit = 'celsius'): number {
+  const isAbsoluteTemperature = key === 'ocean' || key === 'air-temperature' || key === 'min-air-temperature' || key === 'max-air-temperature' || key === 'wet-bulb-temperature' || key === 'dew-point'
+  if (temperatureUnit !== 'fahrenheit') return value
+  if (isAbsoluteTemperature) return value * 9 / 5 + 32
+  if (key === 'temperature' || key === 'temperature-range') return value * 9 / 5
+  return value
+}
+
+export function formatValue(value: number, key: DatasetKey, weatherMode: WeatherMode = 'rain', temperatureUnit: TemperatureUnit = 'celsius'): string {
+  const degreeUnit = temperatureUnit === 'fahrenheit' ? '°F' : '°C'
+  const displayedValue = convertTemperatureValue(value, key, temperatureUnit)
   if (key === 'weather') {
     if (weatherMode === 'rain') return `${value.toFixed(1)} mm/day`
     if (weatherMode === 'wind') return `${value.toFixed(1)} m/s`
     return `${value.toFixed(1)} mm/day`
   }
   if (key === 'co2') return `${value.toFixed(1)} ppm`
-  if (key === 'ocean') return `${value.toFixed(1)} °C`
+  if (key === 'ocean') return `${displayedValue.toFixed(1)} ${degreeUnit}`
   if (key === 'humidity' || key === 'cloud-cover') return `${value.toFixed(1)}%`
   if (key === 'solar-radiation') return `${value.toFixed(2)} MJ/m²/day`
   if (key === 'longwave-radiation') return `${value.toFixed(1)} MJ/m²/day`
   if (key === 'aerosol-depth') return value.toFixed(3)
   if (key === 'surface-pressure') return `${value.toFixed(2)} kPa`
-  if (key === 'air-temperature' || key === 'min-air-temperature' || key === 'max-air-temperature' || key === 'wet-bulb-temperature' || key === 'dew-point') return `${value.toFixed(1)} °C`
-  if (key === 'temperature-range') return `${value.toFixed(1)} °C range`
+  if (key === 'air-temperature' || key === 'min-air-temperature' || key === 'max-air-temperature' || key === 'wet-bulb-temperature' || key === 'dew-point') return `${displayedValue.toFixed(1)} ${degreeUnit}`
+  if (key === 'temperature-range') return `${displayedValue.toFixed(1)} ${degreeUnit} range`
   if (key === 'precipitable-water') return `${value.toFixed(2)} cm`
   if (key === 'specific-humidity') return `${value.toFixed(2)} g/kg`
   if (key === 'soil-wetness') return value.toFixed(2)
   if (key === 'land-evaporation') return `${value.toFixed(2)} mm/day`
   if (key === 'transpiration-energy') return `${value.toFixed(2)} MJ/m²/day`
   if (key === 'wind-speed-2m') return `${value.toFixed(1)} m/s`
-  return `${value > 0 ? '+' : ''}${value.toFixed(2)} °C`
+  return `${displayedValue > 0 ? '+' : ''}${displayedValue.toFixed(2)} ${degreeUnit} anomaly`
 }

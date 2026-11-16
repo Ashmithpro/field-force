@@ -231,6 +231,9 @@ html.theme-light .panel-label, html.theme-light .data-period, html.theme-light .
 html.theme-light .dataset-option { background: rgba(236, 243, 247, .8); border-color: rgba(60, 95, 117, .13); }
 html.theme-light .dataset-option:hover { background: rgba(224, 238, 245, .94); }
 html.theme-light .dataset-option-copy strong, html.theme-light .reading-value { color: #1d3547; }
+html.theme-light .temperature-unit-switch { background: rgba(241, 247, 249, .9); border-color: rgba(43, 80, 103, .22); }
+html.theme-light .temperature-unit-switch button { color: #526b7c; }
+html.theme-light .temperature-unit-switch button[aria-pressed="true"] { color: #09232d; }
 html.theme-light .dataset-option-copy small, html.theme-light .source-mini strong, html.theme-light .dataset-description { color: #62798a; }
 html.theme-light .dataset-more > summary { color: #526e80; }
 html.theme-light .globe-tools > summary { color: #526a7b; background: rgba(244, 248, 250, .95); border-color: rgba(50, 89, 111, .2); }
@@ -327,6 +330,11 @@ html.theme-light .compact-details { color: #324b5d; background: rgba(255,255,255
 .weather-category { align-self: flex-start; margin-top: 7px; padding: 3px 7px; border: 1px solid rgba(255, 155, 120, .33); border-radius: 20px; color: #ffb59a; background: rgba(255, 155, 120, .08); font: 7px var(--mono); letter-spacing: .08em; }
 .weather-category.storm-secondary { border-color: rgba(120, 217, 220, .28); color: #a9e6e2; background: rgba(120, 217, 220, .07); }
 .reading-year { color: #8494a6; font: 9px var(--mono); }
+.reading-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.temperature-unit-switch { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid rgba(137, 166, 192, .2); border-radius: 6px; background: rgba(8, 17, 27, .55); }
+.temperature-unit-switch button { min-width: 42px; min-height: 30px; padding: 4px 8px; border: 0; border-radius: 4px; color: #a6b6c4; background: transparent; cursor: pointer; font: 600 11px var(--mono); }
+.temperature-unit-switch button[aria-pressed="true"] { color: #07131c; background: #7bd9ec; box-shadow: 0 0 12px rgba(91, 212, 242, .2); }
+.temperature-unit-switch button:focus-visible { outline: 2px solid #b8a1ff; outline-offset: 2px; }
 .reading-value { color: #edf4fa; font: 700 30px/1.2 'Manrope'; letter-spacing: -.05em; margin: 5px 0 3px; text-shadow: 0 0 20px color-mix(in srgb, var(--dataset-color) 21%, transparent); }
 .reading-name { color: #718397; font-size: 9px; }
 .reading-context { color: #91a3b2; font-size: 10px; margin-top: 5px; }
