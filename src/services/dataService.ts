@@ -3,6 +3,7 @@ import type { DatasetKey, DatasetPayload, GeoPoint, Measurement, WeatherMode } f
 
 const weatherCache = new Map<string, Promise<DatasetPayload>>()
 const powerMetricCache = new Map<string, Promise<DatasetPayload>>()
+const pointAirTemperatureCache = new Map<string, Promise<Measurement>>()
 let ndviPaletteRequest: Promise<Array<{ rgb: [number, number, number]; min: number; max: number }>> | null = null
 const ndviCache = new Map<string, Promise<{ value: number; date: string } | null>>()
 const nasaRasterCache = new Map<string, Promise<AnnualRasterValue>>()
@@ -715,6 +716,63 @@ async function loadPowerMetric(key: PowerMetricKey, year: number, point?: GeoPoi
     return await request
   } catch (error) {
     powerMetricCache.delete(cacheKey)
+    throw error
+  }
+}
+
+/** Fetch the latest available NASA POWER 2 m air temperature for a clicked map point. */
+export async function loadLatestPointAirTemperature(point: GeoPoint): Promise<Measurement> {
+  const latitude = point.latitude
+  const longitude = point.longitude
+  const endDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+  const startDate = new Date(endDate.getTime() - 20 * 24 * 60 * 60 * 1000)
+  const cacheKey = `${dateCode(endDate)}:${latitude.toFixed(3)}:${longitude.toFixed(3)}`
+  const cached = pointAirTemperatureCache.get(cacheKey)
+  if (cached) return cached
+
+  const request = (async (): Promise<Measurement> => {
+    const query = new URLSearchParams({
+      parameters: 'T2M',
+      community: 'AG',
+      longitude: longitude.toFixed(4),
+      latitude: latitude.toFixed(4),
+      start: dateCode(startDate),
+      end: dateCode(endDate),
+      format: 'JSON',
+      'time-standard': 'UTC',
+    })
+    const response = await fetch(`https://power.larc.nasa.gov/api/temporal/daily/point?${query}`, {
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!response.ok) throw new Error('NASA POWER air temperature is unavailable right now. Try again shortly.')
+    const data = await response.json() as {
+      properties?: { parameter?: Record<string, Record<string, number>> }
+    }
+    const values = data.properties?.parameter?.T2M
+    if (!values) throw new Error('NASA POWER did not return the T2M air-temperature field.')
+    const validValues = Object.entries(values)
+      .filter(([, value]) => Number.isFinite(value) && value > -900)
+      .sort(([first], [second]) => first.localeCompare(second))
+    const latest = validValues[validValues.length - 1]
+    if (!latest) throw new Error('NASA POWER has no valid recent air-temperature reading at this point.')
+
+    const [date, value] = latest
+    const isoDate = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00Z`
+    return {
+      year: Number(date.slice(0, 4)),
+      value,
+      label: shortDate(isoDate),
+      date,
+      latitude,
+      longitude,
+    }
+  })()
+
+  pointAirTemperatureCache.set(cacheKey, request)
+  try {
+    return await request
+  } catch (error) {
+    pointAirTemperatureCache.delete(cacheKey)
     throw error
   }
 }

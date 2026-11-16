@@ -11,7 +11,7 @@ import {
 import WeatherControls from './components/WeatherControls'
 import { mapSoundDurationMs, pauseMapSound, playMapReadingSound, resumeMapSound, setMapSoundVolume, stopMapSound, unlockMapSound } from './audio/sonification'
 import { cityLocations, datasets, formatValue, weatherDefinitions, weatherLocations } from './data/datasets'
-import { loadDataset } from './services/dataService'
+import { loadDataset, loadLatestPointAirTemperature } from './services/dataService'
 import { LanguageProvider, languages, useLanguage } from './i18n'
 import { readPreference, removePreference, savePreference } from './storage'
 import type { DatasetKey, DatasetPayload, GeoPoint, Measurement, WeatherMode } from './types'
@@ -278,6 +278,9 @@ function App() {
   const [powerTemperatureGroupOpen, setPowerTemperatureGroupOpen] = useState(() => powerTemperatureOrder.includes(initialDataset()))
   const [powerLandGroupOpen, setPowerLandGroupOpen] = useState(() => powerLandOrder.includes(initialDataset()))
   const [payloads, setPayloads] = useState<Partial<Record<DatasetKey, DatasetPayload>>>({})
+  const [temperaturePointMeasurement, setTemperaturePointMeasurement] = useState<Measurement | null>(null)
+  const [temperaturePointLoading, setTemperaturePointLoading] = useState(false)
+  const [temperaturePointError, setTemperaturePointError] = useState<string | null>(null)
   const [climateLoading, setClimateLoading] = useState(true)
   const [dataIndex, setDataIndex] = useState(-1)
   const [weatherMode, setWeatherMode] = useState<WeatherMode>(initialWeatherMode)
@@ -367,6 +370,12 @@ function App() {
   const activePoint: GeoPoint = mapSoundRequest?.dataset === datasetKey && mapSoundRequest.mode === weatherMode
     ? mapSoundRequest.point
     : locationPin ?? focusCity ?? mapCenter
+  const temperatureLocation = locationPin ?? focusCity
+  const matchingTemperaturePoint = datasetKey === 'temperature' && temperatureLocation && temperaturePointMeasurement
+    && Math.abs(temperaturePointMeasurement.latitude! - temperatureLocation.latitude) < 0.001
+    && Math.abs(temperaturePointMeasurement.longitude! - temperatureLocation.longitude) < 0.001
+    ? temperaturePointMeasurement
+    : undefined
   const activeLocationName = locationSource === 'gps' && locationPin
       ? t('myLocation')
       : tx(locationName(activePoint, locationPin !== null, focusCity))
@@ -438,18 +447,71 @@ function App() {
   }
 
   useEffect(() => {
+    if (datasetKey !== 'temperature' || !temperatureLocation) {
+      setTemperaturePointLoading(false)
+      return
+    }
+    let active = true
+    setTemperaturePointLoading(true)
+    setTemperaturePointError(null)
+    loadLatestPointAirTemperature(temperatureLocation)
+      .then((pointMeasurement) => {
+        if (active) setTemperaturePointMeasurement(pointMeasurement)
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        setTemperaturePointMeasurement(null)
+        setTemperaturePointError(error instanceof Error ? error.message : 'NASA POWER air temperature could not be loaded.')
+      })
+      .finally(() => { if (active) setTemperaturePointLoading(false) })
+    return () => { active = false }
+  }, [datasetKey, locationPin?.latitude, locationPin?.longitude, focusCity?.latitude, focusCity?.longitude])
+
+  useEffect(() => {
+    const request = mapSoundRequest
+    if (!request || request.dataset !== 'temperature') return
+    if (datasetKey !== 'temperature' || request.mode !== weatherMode) {
+      setMapSoundRequest(null)
+      setSoundPlayerStatus('idle')
+      return
+    }
+    let active = true
+    setTemperaturePointLoading(true)
+    setTemperaturePointError(null)
+    loadLatestPointAirTemperature(request.point)
+      .then((pointMeasurement) => {
+        if (!active || mapSoundRequestIdRef.current !== request.id) return
+        setTemperaturePointMeasurement(pointMeasurement)
+        setTemperaturePointError(null)
+        setTemperaturePointLoading(false)
+        setSoundTrack({ dataset: 'air-temperature', mode: request.mode, point: request.point, value: pointMeasurement.value })
+        setSoundPlayerStatus('playing')
+        startPlaybackClock()
+        playMapReadingSound('air-temperature', request.mode, pointMeasurement.value)
+        setMapSoundRequest(null)
+      })
+      .catch((error: unknown) => {
+        if (!active || mapSoundRequestIdRef.current !== request.id) return
+        const message = error instanceof Error ? error.message : 'NASA POWER air temperature could not be loaded.'
+        setTemperaturePointMeasurement(null)
+        setTemperaturePointError(message)
+        setTemperaturePointLoading(false)
+        setMapSoundRequest(null)
+        setSoundPlayerStatus('unavailable')
+      })
+    return () => { active = false }
+  }, [datasetKey, mapSoundRequest, weatherMode])
+
+  useEffect(() => {
     const request = mapSoundRequest
     if (!request) return
+    if (request.dataset === 'temperature') return
     if (request.dataset !== datasetKey || request.mode !== weatherMode) {
       setMapSoundRequest(null)
       setSoundPlayerStatus('idle')
       return
     }
-    const loading = request.dataset === 'temperature'
-      ? climateLoading
-      : request.dataset === 'weather'
-        ? weatherLoading
-        : datasetLoading
+    const loading = request.dataset === 'weather' ? weatherLoading : datasetLoading
     if (loading) return
     if (request.dataset === 'weather' && weatherError) {
       setMapSoundRequest(null)
@@ -474,6 +536,11 @@ function App() {
     unlockMapSound()
     stopMapSound()
     resetPlaybackClock()
+    if (datasetKey === 'temperature') {
+      setTemperaturePointMeasurement(null)
+      setTemperaturePointLoading(true)
+      setTemperaturePointError(null)
+    }
     setSoundTrack({ dataset: datasetKey, mode: weatherMode, point, value: null })
     setSoundPlayerStatus('loading')
     setMapSoundRequest({ id: ++mapSoundRequestIdRef.current, dataset: datasetKey, mode: weatherMode, point })
@@ -828,17 +895,31 @@ function App() {
   }
 
   const statusLabel = payload?.status ?? definition.status
+  const readingSource = matchingTemperaturePoint ? datasets['air-temperature'].source : payload?.source ?? (weatherError ?? t('loading'))
+  const readingSourceUrl = matchingTemperaturePoint ? datasets['air-temperature'].sourceUrl : payload?.sourceUrl ?? definition.sourceUrl
   const activeColor = definition.color
-  const readingIntensity = measurement
-    ? Math.max(0, Math.min(1, (measurement.value - definition.min) / Math.max(0.000001, definition.max - definition.min)))
-    : 0
-  const readingColor = measurement && thermalPointDatasets.includes(datasetKey)
-    ? measurement.value < 0 ? '#90c9ff' : measurement.value === 0 ? '#ead69c' : datasetKey === 'dew-point' ? '#78d9cf' : '#ff9873'
-    : activeColor
+  const readingIntensity = matchingTemperaturePoint
+    ? Math.max(0, Math.min(1, (matchingTemperaturePoint.value + 50) / 100))
+    : measurement
+      ? Math.max(0, Math.min(1, (measurement.value - definition.min) / Math.max(0.000001, definition.max - definition.min)))
+      : 0
+  const readingColor = matchingTemperaturePoint
+    ? matchingTemperaturePoint.value < 0 ? '#90c9ff' : '#ff9873'
+    : measurement && thermalPointDatasets.includes(datasetKey)
+      ? measurement.value < 0 ? '#90c9ff' : measurement.value === 0 ? '#ead69c' : datasetKey === 'dew-point' ? '#78d9cf' : '#ff9873'
+      : activeColor
   const readingColorNote = thermalPointDatasets.includes(datasetKey)
     ? datasetKey === 'dew-point' ? 'frost blue â†” dew aqua' : 'ice blue <0 Â°C Â· fire orange >0 Â°C'
     : 'dataset color Â· size = low â†’ high'
   const latestDisplay = measurement ? formatMeasurement(measurement, datasetKey, weatherMode) : (payload || weatherError) && !dataIsLoading ? t('noData') : t('loading')
+  const temperaturePointDisplay = matchingTemperaturePoint ? formatValue(matchingTemperaturePoint.value, 'air-temperature') : null
+  const temperaturePointPending = datasetKey === 'temperature' && Boolean(temperatureLocation) && (temperaturePointLoading || mapSoundRequest?.dataset === 'temperature')
+  const readingPanelDisplay = datasetKey === 'temperature' && temperatureLocation
+    ? temperaturePointPending ? t('updating') : temperaturePointDisplay ?? (temperaturePointError ? t('noData') : t('loading'))
+    : latestDisplay
+  const readingPanelName = datasetKey === 'temperature' && temperatureLocation
+    ? `${datasetName('air-temperature')} · NASA POWER${matchingTemperaturePoint ? ` · ${formatPointLabel(matchingTemperaturePoint, tx)}` : ''}`
+    : datasetKey === 'co2' ? 'NASA OCO-2 · global swath sample' : datasetKey === 'temperature' ? 'NASA GISTEMP · global anomaly' : measurement?.latitude !== undefined ? `Map point ${coordinateLabel(measurement.latitude, 'N', 'S')} · ${coordinateLabel(measurement.longitude ?? 0, 'E', 'W')}` : definition.shortName
   const missingData = !measurement && (Boolean(payload) || Boolean(weatherError) || datasetKey === 'ocean' || datasetKey === 'vegetation') && !dataIsLoading
   const weatherWindDisplay = measurement?.windSpeed
   const isPowerMetric = powerDatasetOrder.includes(datasetKey)
@@ -973,6 +1054,9 @@ function App() {
   const pointReadingExplanation = measurement
     ? `${t('reading')}: ${latestDisplay}${localizedPartialPeriod ? ` · ${localizedPartialPeriod}` : ''}${datasetKey === 'weather' && weatherMode === 'storm' && measurement.windSpeed !== undefined ? ` · ${t('wind')}: ${measurement.windSpeed.toFixed(1)} m/s` : ''}`
     : dataIsLoading ? t('updating') : tx(payload?.note ?? t('noPointReading'))
+  const readingPanelExplanation = datasetKey === 'temperature' && temperatureLocation
+    ? temperaturePointDisplay ? tx(datasets['air-temperature'].description) : temperaturePointError ? tx(temperaturePointError) : t('updating')
+    : pointReadingExplanation
 
   const playerDatasetName = soundTrack
     ? soundTrack.dataset === 'weather' ? `${datasetName('weather')} · ${t(soundTrack.mode)}` : datasetName(soundTrack.dataset)
@@ -1118,7 +1202,7 @@ function App() {
                 <span className="dataset-footnote-icon"><Info size={13} /></span>
                 <p><strong>{t('datasetViews', { count: datasetOrder.length })}:</strong> {t('coverageVaries')}</p>
               </div>
-              <div className="source-mini"><span className="source-orbit"><Database size={14} /></span><div><small>{t('source')}</small><strong>{tx(payload?.source ?? (weatherError ?? t('loading')))}</strong></div><a href={payload?.sourceUrl ?? definition.sourceUrl} target="_blank" rel="noreferrer" aria-label={t('source')}><ExternalLink size={13} /></a></div>
+              <div className="source-mini"><span className="source-orbit"><Database size={14} /></span><div><small>{t('source')}</small><strong>{tx(readingSource)}</strong></div><a href={readingSourceUrl} target="_blank" rel="noreferrer" aria-label={t('source')}><ExternalLink size={13} /></a></div>
             </aside>
 
             <section className="globe-panel panel" aria-label={t('earthView')} ref={globePanelRef}>
@@ -1144,7 +1228,7 @@ function App() {
                   {globeShouldLoad ? <Earth
                     dataset={datasetKey}
                     selectedYear={selectedYear}
-                    dataAvailable={Boolean(measurement)}
+                    dataAvailable={Boolean(measurement) || Boolean(matchingTemperaturePoint)}
                     timelinePlaying={timelinePlaying}
                     reducedMotion={reducedMotion}
                     weatherMode={weatherMode}
@@ -1154,11 +1238,11 @@ function App() {
                     focusCity={focusCity}
                     onFocusCity={(id) => changeFocusCity(id)}
                     locationPin={locationPin}
-                    showPointReading={isPowerMetric}
+                    showPointReading={isPowerMetric || Boolean(matchingTemperaturePoint)}
                     readingPoint={activePoint}
                     readingIntensity={readingIntensity}
                     readingColor={readingColor}
-                    readingLabel={latestDisplay}
+                    readingLabel={temperaturePointDisplay ?? latestDisplay}
                     onLocationPin={pinLocation}
                     cameraRequest={cameraRequest}
                     onViewLocationChange={setMapCenter}
@@ -1190,7 +1274,7 @@ function App() {
                         ? <><span className="weather-scale-key"><i className="weather-rain-gradient" /> {tx("Rain Â· mm/day")}</span><span className="weather-globe-note">{tx("Wind Â· m/s")}</span></>
                         : null
                   : datasetKey === 'temperature'
-                    ? <><span className="weather-scale-key"><i className="surface-temperature-gradient" /> {tx("Global anomaly Â· Â°C")}</span><span className="weather-globe-note">{tx("NASA AIRS map Â· 2002+")}</span></>
+                    ? <><span className="weather-scale-key"><i className="surface-temperature-gradient" /> {tx("Global anomaly Â· Â°C")}</span><span className="weather-globe-note">{tx("NASA AIRS map Â· 2002+")}</span>{matchingTemperaturePoint && <span className="power-reading-key" style={{ '--reading-color': readingColor } as React.CSSProperties}><i /> {t('reading')} · {datasetName('air-temperature')} · NASA POWER</span>}</>
                     : datasetKey === 'ocean'
                       ? <><span className="weather-scale-key"><i className="ocean-temperature-gradient" /> {tx("Sea-surface temperature Â· Â°C")}</span><span className="weather-globe-note">{tx("NASA/JPL MUR Â· daily")}</span></>
                       : datasetKey === 'co2'
@@ -1215,12 +1299,13 @@ function App() {
               <div className="panel-heading"><span className="panel-index">03</span><div><span className="panel-label">{t('reading')}</span></div><span className="mode-tag">{tx(statusLabel)}</span></div>
               <div className="reading-primary" style={{ '--dataset-color': activeColor } as React.CSSProperties} aria-live="polite">
                 <span className="reading-year">{t('latest')}</span>
-                <span className="reading-value">{latestDisplay}</span>
-                <span className="reading-name">{tx(datasetKey === 'co2' ? 'NASA OCO-2 Â· global swath sample' : datasetKey === 'temperature' ? 'NASA GISTEMP Â· global anomaly' : measurement?.latitude !== undefined ? `Map point ${coordinateLabel(measurement.latitude, 'N', 'S')} Â· ${coordinateLabel(measurement.longitude ?? 0, 'E', 'W')}` : definition.shortName)}</span>
+                <span className="reading-value">{readingPanelDisplay}</span>
+                <span className="reading-name">{datasetKey === 'temperature' && temperatureLocation ? readingPanelName : tx(readingPanelName)}</span>
+                {temperaturePointDisplay && <span className="reading-context">{tx('NASA GISTEMP Â· global anomaly')}: {latestDisplay}</span>}
                 {datasetKey === 'weather' && weatherMode === 'storm' && weatherWindDisplay !== undefined && <span className="weather-category storm-secondary">WIND {weatherWindDisplay.toFixed(1)} m/s</span>}
               </div>
-              <p className="dataset-description">{tx(definition.description)}</p>
-              <details className="reading-meaning" open><summary>{t('whatThisReadingMeans')}<ChevronDown size={13} /></summary><p>{tx(pointReadingExplanation)}</p></details>
+              <p className="dataset-description">{tx(datasetKey === 'temperature' && temperatureLocation ? datasets['air-temperature'].description : definition.description)}</p>
+              <details className="reading-meaning" open><summary>{t('whatThisReadingMeans')}<ChevronDown size={13} /></summary><p>{tx(readingPanelExplanation)}</p></details>
             </aside>
           </div>
           <p className="globe-text-alt sr-only">{measurement ? tx(`Latest ${displayDatasetName}: ${latestDisplay}. ${payload?.note ?? ''}`) : tx('Loading the latest available measurement.')} {tx(resolvedGlobeCaption)}{tx(". The satellite basemap and place labels are contextual map sources; all scientific readings and science layers come from NASA.")}</p>

@@ -332,6 +332,7 @@ html.theme-light .compact-details { color: #324b5d; background: rgba(255,255,255
 .reading-year { color: #8494a6; font: 9px var(--mono); }
 .reading-value { color: #edf4fa; font: 700 30px/1.2 'Manrope'; letter-spacing: -.05em; margin: 5px 0 3px; text-shadow: 0 0 20px color-mix(in srgb, var(--dataset-color) 21%, transparent); }
 .reading-name { color: #718397; font-size: 9px; }
+.reading-context { color: #91a3b2; font-size: 10px; margin-top: 5px; }
 .dataset-description { color: #8998a9; font-size: 9px; line-height: 1.55; margin: 12px 0; min-height: 31px; }
 .reading-meaning { margin: 10px 0 0; border-top: 1px solid rgba(137, 166, 192, .1); padding-top: 8px; }
 .reading-meaning summary { list-style: none; color: #8fa5b6; display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: 8px; }
@@ -830,6 +831,7 @@ html.theme-light .source-mini small,
 html.theme-light .source-mini strong,
 html.theme-light .dataset-description,
 html.theme-light .reading-name,
+html.theme-light .reading-context,
 html.theme-light .reading-meaning p,
 html.theme-light .point-reading-info p,
 html.theme-light .timeline-foot,
