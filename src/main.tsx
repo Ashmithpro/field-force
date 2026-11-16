@@ -1,7 +1,7 @@
 import { Component, StrictMode, Suspense, lazy, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  ArrowRight, ArrowUpDown, ArrowUpRight, Atom, ChevronDown, CloudRain, Compass, Database, Download, ExternalLink, Eye, Flame,
+  ArrowRight, ArrowUpDown, ArrowUpRight, Atom, ChevronDown, CloudRain, Compass, Database, Download, ExternalLink, Eye,
   Cloud, Droplets, Gauge, Info, Languages, Leaf, Maximize2, Pause, Play, RotateCcw, Search, Settings2, Share2, Shuffle, SkipBack, SkipForward, Snowflake, Sprout, Square, Sun, Thermometer, Volume2, Waves, Wind, X,
 } from 'lucide-react'
 import {
@@ -18,20 +18,17 @@ import type { DatasetKey, DatasetPayload, GeoPoint, Measurement, WeatherMode } f
 import './styles.css'
 
 const Earth = lazy(() => import('./components/Earth'))
-const coreDatasetOrder: DatasetKey[] = ['temperature', 'weather', 'ocean', 'co2', 'vegetation']
-const modisDatasetOrder: DatasetKey[] = ['land-temperature', 'productivity', 'snow']
+const coreDatasetOrder: DatasetKey[] = ['temperature', 'weather', 'ocean', 'co2']
 const powerAtmosphereOrder: DatasetKey[] = ['humidity', 'specific-humidity', 'precipitable-water', 'cloud-cover', 'solar-radiation', 'longwave-radiation', 'aerosol-depth', 'surface-pressure', 'wind-speed-2m']
 const powerTemperatureOrder: DatasetKey[] = ['air-temperature', 'min-air-temperature', 'max-air-temperature', 'temperature-range', 'wet-bulb-temperature', 'dew-point']
 const powerLandOrder: DatasetKey[] = ['soil-wetness', 'land-evaporation', 'transpiration-energy']
 const powerDatasetOrder: DatasetKey[] = [...powerAtmosphereOrder, ...powerTemperatureOrder, ...powerLandOrder]
-const extraDatasetOrder: DatasetKey[] = [...modisDatasetOrder, ...powerDatasetOrder]
+const extraDatasetOrder: DatasetKey[] = [...powerDatasetOrder]
 const datasetOrder: DatasetKey[] = [...coreDatasetOrder, ...extraDatasetOrder]
 type SoundPlayerTrack = { dataset: DatasetKey; mode: WeatherMode; point: GeoPoint; value: number | null; windSpeed?: number }
 type SoundPlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'finished' | 'stopped' | 'unavailable'
 const datasetLabels: Partial<Record<DatasetKey, string>> = {
   weather: 'Weather',
-  'land-temperature': 'Land temp',
-  productivity: 'Plant growth',
   humidity: 'Humidity',
   'specific-humidity': 'Specific humidity',
   'cloud-cover': 'Cloud cover',
@@ -146,7 +143,7 @@ const chartFormatter = (value: number, key: DatasetKey) => {
   if (key === 'land-evaporation' || key === 'transpiration-energy') return value.toFixed(1)
   if (key === 'wind-speed-2m') return value.toFixed(1)
   if (key === 'air-temperature' || key === 'min-air-temperature' || key === 'max-air-temperature' || key === 'temperature-range' || key === 'wet-bulb-temperature' || key === 'dew-point') return value.toFixed(1)
-  return value.toFixed(key === 'vegetation' ? 2 : 1)
+  return value.toFixed(1)
 }
 const localizedMonthName = (month: number, width: 'short' | 'long' = 'short') => new Intl.DateTimeFormat(document.documentElement.lang || 'en', { month: width, timeZone: 'UTC' }).format(new Date(Date.UTC(2020, month, 1)))
 const measurementPeriod = (point?: Measurement) => point?.periodMonths ? `latest mean · Jan–${localizedMonthName(Math.max(0, Math.min(11, point.periodMonths - 1)))}` : null
@@ -196,9 +193,6 @@ function DatasetIcon({ dataset, size = 17 }: { dataset: DatasetKey; size?: numbe
   if (dataset === 'weather') return <CloudRain size={size} />
   if (dataset === 'ocean') return <Waves size={size} />
   if (dataset === 'co2') return <Atom size={size} />
-  if (dataset === 'land-temperature') return <Flame size={size} />
-  if (dataset === 'productivity') return <Sprout size={size} />
-  if (dataset === 'snow') return <Snowflake size={size} />
   if (dataset === 'humidity') return <Droplets size={size} />
   if (dataset === 'specific-humidity') return <Droplets size={size} />
   if (dataset === 'cloud-cover') return <Cloud size={size} />
@@ -224,12 +218,9 @@ function DatasetOption({ dataset, selected, onSelect }: { dataset: DatasetKey; s
   const { datasetName, tx } = useLanguage()
   const item = datasets[dataset]
   const label = datasetName(dataset)
-  const isModis = modisDatasetOrder.includes(dataset) || dataset === 'vegetation' || dataset === 'land-temperature'
   const sourceFamily = dataset === 'weather' || powerDatasetOrder.includes(dataset)
     ? 'NASA POWER'
-    : isModis
-      ? 'NASA MODIS'
-      : item.source.split('Â·')[0].trim()
+    : item.source.split('Â·')[0].trim()
   const unitLabel = dataset === 'weather' ? 'rain mm/day Â· wind m/s' : item.unit
   const subtitle = dataset === 'weather'
     ? tx('NASA POWER Â· rain Â· wind')
@@ -273,7 +264,6 @@ function App() {
     const requested = window.location.hash.slice(1)
     return ['explorer', 'how-it-works', 'about'].includes(requested) ? requested : 'explorer'
   })
-  const [modisGroupOpen, setModisGroupOpen] = useState(() => modisDatasetOrder.includes(initialDataset()))
   const [powerGroupOpen, setPowerGroupOpen] = useState(() => powerAtmosphereOrder.includes(initialDataset()))
   const [powerTemperatureGroupOpen, setPowerTemperatureGroupOpen] = useState(() => powerTemperatureOrder.includes(initialDataset()))
   const [powerLandGroupOpen, setPowerLandGroupOpen] = useState(() => powerLandOrder.includes(initialDataset()))
@@ -596,7 +586,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!['ocean', 'vegetation', 'co2', 'land-temperature', 'productivity', 'snow'].includes(datasetKey) && !powerDatasetOrder.includes(datasetKey)) {
+    if (!['ocean', 'co2'].includes(datasetKey) && !powerDatasetOrder.includes(datasetKey)) {
       setDatasetLoading(false)
       return
     }
@@ -688,18 +678,11 @@ function App() {
   const chooseDataset = (key: DatasetKey) => {
     setDatasetKey(key)
     setDatasetSearch('')
-    setModisGroupOpen(modisDatasetOrder.includes(key))
     setPowerGroupOpen(powerAtmosphereOrder.includes(key))
     setPowerTemperatureGroupOpen(powerTemperatureOrder.includes(key))
     setPowerLandGroupOpen(powerLandOrder.includes(key))
     setDataIndex(-1)
     setTimelinePlaying(false)
-    // The initial world view is centered over the Atlantic. Give NDVI a valid
-    // land sampling point on first use; preserve any location the user chose.
-    if (key === 'vegetation' && !locationPin && !focusCityId
-      && Math.abs(mapCenter.latitude - 18) < 0.01 && Math.abs(mapCenter.longitude + 20) < 0.01) {
-      setFocusCityId('new-york')
-    }
     const url = new URL(window.location.href)
     url.searchParams.set('dataset', key)
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
@@ -920,7 +903,7 @@ function App() {
   const readingPanelName = datasetKey === 'temperature' && temperatureLocation
     ? `${datasetName('air-temperature')} · NASA POWER${matchingTemperaturePoint ? ` · ${formatPointLabel(matchingTemperaturePoint, tx)}` : ''}`
     : datasetKey === 'co2' ? 'NASA OCO-2 · global swath sample' : datasetKey === 'temperature' ? 'NASA GISTEMP · global anomaly' : measurement?.latitude !== undefined ? `Map point ${coordinateLabel(measurement.latitude, 'N', 'S')} · ${coordinateLabel(measurement.longitude ?? 0, 'E', 'W')}` : definition.shortName
-  const missingData = !measurement && (Boolean(payload) || Boolean(weatherError) || datasetKey === 'ocean' || datasetKey === 'vegetation') && !dataIsLoading
+  const missingData = !measurement && (Boolean(payload) || Boolean(weatherError) || datasetKey === 'ocean') && !dataIsLoading
   const weatherWindDisplay = measurement?.windSpeed
   const isPowerMetric = powerDatasetOrder.includes(datasetKey)
   const isLiveWeatherGlobe = datasetKey === 'weather' && selectedYear === currentYearNumber
@@ -942,11 +925,7 @@ function App() {
         : datasetKey === 'temperature' ? 'Global surface temperature'
           : datasetKey === 'ocean' ? 'Ocean temperature'
             : datasetKey === 'co2' ? 'Atmospheric COâ‚‚'
-              : datasetKey === 'vegetation' ? 'Vegetation index'
-                : datasetKey === 'land-temperature' ? 'MODIS land temperature'
-                  : datasetKey === 'productivity' ? 'MODIS plant productivity'
-                    : datasetKey === 'snow' ? 'MODIS snow cover'
-                      : datasetKey === 'humidity' ? 'Relative humidity'
+              : datasetKey === 'humidity' ? 'Relative humidity'
                         : datasetKey === 'specific-humidity' ? 'Specific humidity'
                         : datasetKey === 'cloud-cover' ? 'Cloud amount'
                           : datasetKey === 'solar-radiation' ? 'Surface solar radiation'
@@ -971,11 +950,7 @@ function App() {
         : datasetKey === 'temperature' ? 'NASA GISTEMP Â· GLOBAL ANOMALY'
           : datasetKey === 'ocean' ? 'NASA/JPL MUR Â· DAILY SST'
             : datasetKey === 'co2' ? 'NASA OCO-2 Â· GLOBAL SWATHS'
-              : datasetKey === 'vegetation' ? 'NASA TERRA MODIS Â· NDVI'
-                : datasetKey === 'land-temperature' ? 'NASA MODIS Â· 8-DAY LST'
-                  : datasetKey === 'productivity' ? 'NASA MODIS Â· 8-DAY GPP'
-                    : datasetKey === 'snow' ? 'NASA MODIS Â· DAILY SNOW'
-                      : datasetKey === 'humidity' ? 'NASA POWER Â· RH2M DAILY'
+              : datasetKey === 'humidity' ? 'NASA POWER Â· RH2M DAILY'
                         : datasetKey === 'specific-humidity' ? 'NASA POWER Â· QV2M DAILY'
                         : datasetKey === 'cloud-cover' ? 'NASA POWER Â· CERES CLOUDS'
                           : datasetKey === 'solar-radiation' ? 'NASA POWER Â· ALL-SKY SOLAR'
@@ -1005,18 +980,10 @@ function App() {
           ? `NASA GISTEMP ${localizedPartialPeriod ?? 'annual'} global mean; NASA AIRS monthly satellite imagery is a separate map layer available from 2002.`
           : datasetKey === 'ocean'
             ? `NASA/JPL MUR ${localizedPartialPeriod ?? 'annual sample mean'} from monthly map samples at the selected ocean point.`
-            : datasetKey === 'co2'
-              ? `Approximate mean of NASA OCO-2 total-column swath color bins through ${measurement?.date ?? 'the latest available sample'}; the sampled orbital tracks do not cover the full atmosphere.`
-              : datasetKey === 'vegetation'
-                ? 'NASA Terra MODIS rolling 8-day NDVI pixel for the latest available composite and map point.'
-                : datasetKey === 'land-temperature'
-                  ? 'NASA MODIS 8-day daytime land-surface temperature overlay; the pin value is a quality-screened NASA raster pixel.'
-                  : datasetKey === 'productivity'
-                    ? 'NASA MODIS 8-day gross primary productivity overlay; the pin value is a quality-screened NASA raster pixel.'
-                    : datasetKey === 'snow'
-                      ? 'NASA MODIS snow-cover overlay on the displayed seasonal sample date; the pin value uses the NASA raster and QA flags.'
-                      : datasetKey === 'humidity'
-                        ? 'Daily NASA POWER relative humidity at the selected point; the familiar map is geographic context, not a humidity raster.'
+              : datasetKey === 'co2'
+                ? `Approximate mean of NASA OCO-2 total-column swath color bins through ${measurement?.date ?? 'the latest available sample'}; the sampled orbital tracks do not cover the full atmosphere.`
+                : datasetKey === 'humidity'
+                  ? 'Daily NASA POWER relative humidity at the selected point; the familiar map is geographic context, not a humidity raster.'
                         : datasetKey === 'specific-humidity'
                           ? 'NASA POWER daily 2-meter specific humidity in grams of water vapor per kilogram of moist air; this is distinct from relative humidity.'
                         : datasetKey === 'cloud-cover'
@@ -1030,7 +997,7 @@ function App() {
                                 : datasetKey === 'wind-speed-2m'
                                   ? 'NASA POWER daily mean wind at 2 meters; this point series is separate from the 10-meter weather wind map overlay.'
                                   : datasetKey === 'air-temperature'
-                                  ? 'Daily NASA POWER 2-meter air temperature at the selected point; it differs from the global GISTEMP anomaly and MODIS land temperature.'
+                                      ? 'Daily NASA POWER 2-meter air temperature at the selected point; it differs from the global GISTEMP anomaly.'
                                   : datasetKey === 'min-air-temperature'
                                     ? 'NASA POWER daily UTC minimum 2-meter air temperature, calculated from hourly model temperatures.'
                                     : datasetKey === 'max-air-temperature'
@@ -1140,7 +1107,7 @@ function App() {
 
           {missingData && <div className="no-data-alert" role="alert">
             <span className="no-data-icon"><Info size={16} /></span>
-            <div className="no-data-copy"><strong>{displayDatasetName} · {t('noData')}</strong><span>{tx(datasetKey === 'vegetation' ? 'This NASA NDVI sample needs a clear land pixel. Water, cloud, and masked pixels have no reading; try another land point.' : datasetKey === 'ocean' ? 'NASA MUR needs an ocean pixel here. Move the pin over open water to read sea-surface temperature.' : datasetKey === 'co2' ? 'OCO-2 follows sparse satellite tracks, so there may be no recent swath sample for this view.' : datasetKey === 'land-temperature' ? 'MODIS needs a clear, quality-screened daytime land pixel near the latest composite.' : datasetKey === 'productivity' ? 'MODIS plant productivity has no valid pixel here. Try a vegetated land location.' : datasetKey === 'snow' ? 'NASA snow cover needs a valid land pixel with current seasonal coverage.' : powerLandOrder.includes(datasetKey) ? 'This NASA POWER land-water value needs a valid land grid cell. Try another land point.' : powerDatasetOrder.includes(datasetKey) ? 'NASA POWER has no valid reading at this grid cell. Try a nearby map point.' : 'NASA has no valid reading for this view right now.')}</span>{(payload?.note || weatherError) && <small>{tx(weatherError ?? payload?.note ?? '')}</small>}</div>
+            <div className="no-data-copy"><strong>{displayDatasetName} · {t('noData')}</strong><span>{tx(datasetKey === 'ocean' ? 'NASA MUR needs an ocean pixel here. Move the pin over open water to read sea-surface temperature.' : datasetKey === 'co2' ? 'OCO-2 follows sparse satellite tracks, so there may be no recent swath sample for this view.' : powerLandOrder.includes(datasetKey) ? 'This NASA POWER land-water value needs a valid land grid cell. Try another land point.' : powerDatasetOrder.includes(datasetKey) ? 'NASA POWER has no valid reading at this grid cell. Try a nearby map point.' : 'NASA has no valid reading for this view right now.')}</span>{(payload?.note || weatherError) && <small>{tx(weatherError ?? payload?.note ?? '')}</small>}</div>
             {datasetKey === 'weather' && weatherError && <button type="button" className="secondary" onClick={() => setWeatherRetry((value) => value + 1)}>{t('retry')}</button>}
             <button type="button" className="secondary" onClick={chooseAlternativeDataset} disabled={!alternativeDataset}>{t('changeDataset')}</button>
           </div>}
@@ -1156,14 +1123,6 @@ function App() {
                 <div className="dataset-list" role="group" aria-label={t('datasets')}>
                   {coreDatasetOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} />)}
                 </div>
-              <details className={`dataset-more ${modisDatasetOrder.includes(datasetKey) ? 'has-selection' : ''}`} open={modisGroupOpen}>
-                <summary onClick={(event) => { event.preventDefault(); setModisGroupOpen((open) => !open) }} aria-expanded={modisGroupOpen}>
-                  <span>{t('modisProducts')}</span><small>{modisDatasetOrder.length}</small><ChevronDown size={13} />
-                </summary>
-                {modisGroupOpen && <div className="dataset-more-list" role="group" aria-label={tx("NASA MODIS datasets")}>
-                  {modisDatasetOrder.map((key) => <DatasetOption key={key} dataset={key} selected={datasetKey === key} onSelect={chooseDataset} />)}
-                </div>}
-              </details>
               <details className={`dataset-more ${powerAtmosphereOrder.includes(datasetKey) ? 'has-selection' : ''}`} open={powerGroupOpen}>
                 <summary onClick={(event) => { event.preventDefault(); setPowerGroupOpen((open) => !open) }} aria-expanded={powerGroupOpen}>
                   <span>{t('powerAtmosphere')}</span><small>{powerAtmosphereOrder.length}</small><ChevronDown size={13} />
@@ -1277,17 +1236,9 @@ function App() {
                     ? <><span className="weather-scale-key"><i className="surface-temperature-gradient" /> {tx("Global anomaly Â· Â°C")}</span><span className="weather-globe-note">{tx("NASA AIRS map Â· 2002+")}</span>{matchingTemperaturePoint && <span className="power-reading-key" style={{ '--reading-color': readingColor } as React.CSSProperties}><i /> {t('reading')} · {datasetName('air-temperature')} · NASA POWER</span>}</>
                     : datasetKey === 'ocean'
                       ? <><span className="weather-scale-key"><i className="ocean-temperature-gradient" /> {tx("Sea-surface temperature Â· Â°C")}</span><span className="weather-globe-note">{tx("NASA/JPL MUR Â· daily")}</span></>
-                      : datasetKey === 'co2'
-                        ? <><span className="weather-scale-key"><i className="co2-gradient" /> {tx("Column COâ‚‚ Â· 380â€“480 ppm")}</span><span className="weather-globe-note">{tx("NASA OCO-2 Â· sampled global swaths")}</span></>
-                        : datasetKey === 'vegetation'
-                          ? <><span className="weather-scale-key"><i className="vegetation-gradient" /> {tx("Greenness Â· NDVI")}</span><span className="weather-globe-note">{tx("NASA MODIS Â· 0â€“1")}</span></>
-                          : datasetKey === 'land-temperature'
-                            ? <><span className="weather-scale-key"><i className="surface-temperature-gradient" /> {tx("Land surface Â· Â°C")}</span><span className="weather-globe-note">{tx("NASA MODIS Â· 8-day daytime")}</span></>
-                            : datasetKey === 'productivity'
-                              ? <><span className="weather-scale-key"><i className="productivity-gradient" /> {tx("Plant carbon Â· kg C/mÂ²/8d")}</span><span className="weather-globe-note">{tx("NASA MODIS Â· 8-day GPP")}</span></>
-                              : datasetKey === 'snow'
-                                ? <><span className="weather-scale-key"><i className="snow-gradient" /> {tx("Snow cover Â· %")}</span><span className="weather-globe-note">{tx("NASA MODIS Â· daily")}</span></>
-                                : datasetKey === 'transpiration-energy'
+                        : datasetKey === 'co2'
+                          ? <><span className="weather-scale-key"><i className="co2-gradient" /> {tx("Column COâ‚‚ Â· 380â€“480 ppm")}</span><span className="weather-globe-note">{tx("NASA OCO-2 Â· sampled global swaths")}</span></>
+                          : datasetKey === 'transpiration-energy'
                                   ? <span className="weather-scale-key"><i className="transpiration-gradient" /> {tx("NASA POWER · MERRA-2 EVPTRNS")} · W/m²</span>
                                   : isPowerMetric
                                   ? <>{measurement ? <span className="power-reading-key" style={{ '--reading-color': readingColor } as React.CSSProperties}><i /> {tx(powerVisualSignatures[datasetKey] ?? 'POINT HALO')} <small>{tx(readingColorNote)}</small></span> : <span className="power-reading-empty">{t('noPointReading')}</span>}<span className="weather-globe-note">{tx(powerMapLegend(datasetKey, selectedYear))}</span></>
@@ -1324,7 +1275,7 @@ function App() {
             </div>
           </div>
           <div className="timeline-chart-wrap">
-            <div className="chart-annotation"><span className="chart-current-mark" style={{ backgroundColor: activeColor }} /><strong>{t('latest')}</strong><span>{latestDisplay}</span><span className="annotation-note">{tx(datasetKey === 'weather' ? 'NASA POWER DAILY RECORD' : datasetKey === 'ocean' ? 'NASA/JPL MUR MONTHLY MAP SAMPLES' : datasetKey === 'co2' ? 'NASA OCO-2 GLOBAL SWATH SAMPLE' : ['vegetation', 'land-temperature', 'productivity', 'snow'].includes(datasetKey) ? 'NASA MODIS PIN SAMPLE' : isPowerMetric ? 'NASA POWER DAILY POINT SERIES' : 'NASA GISTEMP RECORD')}</span></div>
+            <div className="chart-annotation"><span className="chart-current-mark" style={{ backgroundColor: activeColor }} /><strong>{t('latest')}</strong><span>{latestDisplay}</span><span className="annotation-note">{tx(datasetKey === 'weather' ? 'NASA POWER DAILY RECORD' : datasetKey === 'ocean' ? 'NASA/JPL MUR MONTHLY MAP SAMPLES' : datasetKey === 'co2' ? 'NASA OCO-2 GLOBAL SWATH SAMPLE' : isPowerMetric ? 'NASA POWER DAILY POINT SERIES' : 'NASA GISTEMP RECORD')}</span></div>
             <div className="timeline-chart" role="img" aria-label={tx(chartDescription)}>
               {series.length === 1 && measurement ? <div className="latest-snapshot-card"><small>{t('latest')}</small><strong>{latestDisplay}</strong><span>{formatPointLabel(measurement, tx)}</span></div> : series.length ? <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartSeries} margin={{ top: 15, right: 7, bottom: 2, left: -14 }}>
@@ -1352,12 +1303,12 @@ function App() {
 
         <details className="compact-details" id="how-it-works">
           <summary><span className="details-summary-copy"><Database size={15} /> {tx("How it works")}</span><ChevronDown size={15} /></summary>
-          <div className="compact-details-content"><p>{tx("All scientific measurements and overlays are NASA products. The Microsoft Planetary Computer catalogs and serves several NASA MODIS GeoTIFF products; the map basemap and labels provide geographic context.")}</p></div>
+          <div className="compact-details-content"><p>{tx("All scientific measurements and overlays are NASA products; the map basemap and labels provide geographic context.")}</p></div>
         </details>
 
         <details className="compact-details" id="about">
           <summary><span className="details-summary-copy"><Database size={15} /> {tx("About & credits")} <small>{tx("Field Force Â· NASA Space Apps")}</small></span><ChevronDown size={15} /></summary>
-          <div className="compact-details-content about-credits"><span>{t('projectSummary')}</span><a href={datasets.temperature.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA GISTEMP v4 global temperature")} <ExternalLink size={12} /></a><a href="https://data.giss.nasa.gov/gistemp/datasources_v4.html" target="_blank" rel="noreferrer">{tx("GISTEMP input sources Â· includes NOAA/NCEI records")} <ExternalLink size={12} /></a><a href={datasets.ocean.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA/JPL MUR daily sea-surface temperature")} <ExternalLink size={12} /></a><a href={datasets.co2.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA OCO-2 total-column COâ‚‚")} <ExternalLink size={12} /></a><a href={weatherDefinitions.rain.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA POWER daily weather")} <ExternalLink size={12} /></a><a href="https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/MERRA2_Surface_Wind_Speed_Monthly.json" target="_blank" rel="noreferrer">{tx("NASA MERRA-2 monthly wind map")} <ExternalLink size={12} /></a><a href="https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/IMERG_Precipitation_Rate_30min.json" target="_blank" rel="noreferrer">{tx("NASA GPM IMERG precipitation imagery")} <ExternalLink size={12} /></a><a href="https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/AIRS_L3_Surface_Air_Temperature_Monthly_Day.json" target="_blank" rel="noreferrer">{tx("NASA AIRS temperature imagery")} <ExternalLink size={12} /></a><a href="https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/MODIS_Terra_NDVI_8Day.json" target="_blank" rel="noreferrer">{tx("NASA Terra MODIS vegetation")} <ExternalLink size={12} /></a><a href={datasets['land-temperature'].sourceUrl} target="_blank" rel="noreferrer">{tx("NASA MODIS 8-day land-surface temperature Â· MOD11A2")} <ExternalLink size={12} /></a><a href={datasets.productivity.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA MODIS gross primary productivity Â· MOD17A2HGF")} <ExternalLink size={12} /></a><a href={datasets.snow.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA MODIS daily snow cover Â· MOD10A1")} <ExternalLink size={12} /></a><a href="https://planetarycomputer.microsoft.com/catalog" target="_blank" rel="noreferrer">{tx("Catalog and GeoTIFF hosting Â· Microsoft Planetary Computer")} <ExternalLink size={12} /></a><a href="https://www.esri.com/en-us/arcgis/products/arcgis-living-atlas/imagery" target="_blank" rel="noreferrer">{tx("Satellite basemap imagery Â· Esri and imagery partners")} <ExternalLink size={12} /></a><a href="https://openfreemap.org/" target="_blank" rel="noreferrer">{tx("Map style Â· OpenFreeMap")} <ExternalLink size={12} /></a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{tx("Map labels Â· OpenStreetMap contributors")} <ExternalLink size={12} /></a><span>{tx("Measurements and science overlays are NASA products, although some NASA analyses use partner observations such as the NOAA/NCEI records documented for GISTEMP. MUR and NDVI point readings are approximate color-bin samples; the new MODIS land-temperature, productivity, and snow-cover readings use the NASA raster scale factors and quality flags. OCO-2 uses sparse orbit swaths and is not a complete global daily field. Satellite basemap imagery and map labels are contextual layers. Colors and markers summarize NASA values; they are not additional measurements.")}</span></div>
+          <div className="compact-details-content about-credits"><span>{t('projectSummary')}</span><a href={datasets.temperature.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA GISTEMP v4 global temperature")} <ExternalLink size={12} /></a><a href="https://data.giss.nasa.gov/gistemp/datasources_v4.html" target="_blank" rel="noreferrer">{tx("GISTEMP input sources Â· includes NOAA/NCEI records")} <ExternalLink size={12} /></a><a href={datasets.ocean.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA/JPL MUR daily sea-surface temperature")} <ExternalLink size={12} /></a><a href={datasets.co2.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA OCO-2 total-column COâ‚‚")} <ExternalLink size={12} /></a><a href={weatherDefinitions.rain.sourceUrl} target="_blank" rel="noreferrer">{tx("NASA POWER daily weather")} <ExternalLink size={12} /></a><a href="https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/MERRA2_Surface_Wind_Speed_Monthly.json" target="_blank" rel="noreferrer">{tx("NASA MERRA-2 monthly wind map")} <ExternalLink size={12} /></a><a href="https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/IMERG_Precipitation_Rate_30min.json" target="_blank" rel="noreferrer">{tx("NASA GPM IMERG precipitation imagery")} <ExternalLink size={12} /></a><a href="https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/AIRS_L3_Surface_Air_Temperature_Monthly_Day.json" target="_blank" rel="noreferrer">{tx("NASA AIRS temperature imagery")} <ExternalLink size={12} /></a><a href="https://www.esri.com/en-us/arcgis/products/arcgis-living-atlas/imagery" target="_blank" rel="noreferrer">{tx("Satellite basemap imagery Â· Esri and imagery partners")} <ExternalLink size={12} /></a><a href="https://openfreemap.org/" target="_blank" rel="noreferrer">{tx("Map style Â· OpenFreeMap")} <ExternalLink size={12} /></a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{tx("Map labels Â· OpenStreetMap contributors")} <ExternalLink size={12} /></a><span>{tx("Measurements and science overlays are NASA products, although some NASA analyses use partner observations such as the NOAA/NCEI records documented for GISTEMP. MUR point readings are approximate color-bin samples; OCO-2 uses sparse orbit swaths and is not a complete global daily field. Satellite basemap imagery and map labels are contextual layers. Colors and markers summarize NASA values; they are not additional measurements.")}</span></div>
         </details>
         <details className="compact-details" id="nasa-power-sources">
           <summary><span className="details-summary-copy"><Database size={15} /> {tx("NASA POWER data")} <small>{powerDatasetOrder.length} {tx("daily point series")}</small></span><ChevronDown size={15} /></summary>

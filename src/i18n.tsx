@@ -178,8 +178,6 @@ const readingInterfaceTranslations: Partial<Record<Language, Partial<Record<Mess
 const loadedLocales = new Map<Language, LocaleBundle>([['en', englishLocale]])
 const datasetLabelSources: Partial<Record<DatasetKey, string>> = {
   weather: 'Weather',
-  'land-temperature': 'Land temp',
-  productivity: 'Plant growth',
   humidity: 'Humidity',
   'specific-humidity': 'Specific humidity',
   'cloud-cover': 'Cloud cover',

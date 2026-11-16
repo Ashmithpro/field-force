@@ -306,9 +306,6 @@ html.theme-light .compact-details { color: #324b5d; background: rgba(255,255,255
 .globe-legend > .co2-globe-key { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .globe-legend > .co2-globe-key i { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 2px; }
 .co2-observation-swatch { background: #23888e; box-shadow: 0 0 7px rgba(35, 136, 142, .65); }
-.vegetation-gradient { background: linear-gradient(90deg, #72503c 0%, #b7b768 22%, #69b76b 50%, #208758 77%, #125846 100%); }
-.productivity-gradient { background: linear-gradient(90deg, #273a7a 0%, #297db0 24%, #48b983 55%, #dbd75b 79%, #ec8e48 100%); }
-.snow-gradient { background: linear-gradient(90deg, #526275 0%, #8caecb 35%, #c6e5f6 70%, #ffffff 100%); }
 .transpiration-gradient { background: linear-gradient(90deg, #0e1841 0%, #2462a8 16%, #18b2b8 35%, #91da7d 54%, #f7dc67 72%, #ef6b42 88%, #a62a69 100%); }
 .legend-gradient { flex: 1; height: 2px; min-width: 22px; background: linear-gradient(90deg, color-mix(in srgb, var(--legend-color) 35%, #152b3c), var(--legend-color), #fff0d2); }
 .legend-not-data { margin-left: auto; color: #607589; border: 1px solid rgba(127, 155, 178, .2); padding: 3px 5px; border-radius: 2px; font-size: 7px; }

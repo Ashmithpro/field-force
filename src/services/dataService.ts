@@ -4,21 +4,13 @@ import type { DatasetKey, DatasetPayload, GeoPoint, Measurement, WeatherMode } f
 const weatherCache = new Map<string, Promise<DatasetPayload>>()
 const powerMetricCache = new Map<string, Promise<DatasetPayload>>()
 const pointAirTemperatureCache = new Map<string, Promise<Measurement>>()
-let ndviPaletteRequest: Promise<Array<{ rgb: [number, number, number]; min: number; max: number }>> | null = null
-const ndviCache = new Map<string, Promise<{ value: number; date: string } | null>>()
 const nasaRasterCache = new Map<string, Promise<AnnualRasterValue>>()
 const oco2YearCache = new Map<string, Promise<{ value: number; date: string; sampleCount: number }>>()
 const nasaPaletteCache = new Map<string, Promise<ColorBin[]>>()
-const planetaryRasterCache = new Map<string, Promise<PlanetarySample | null>>()
-const NDVI_COLORMAP_URL = 'https://gibs.earthdata.nasa.gov/colormaps/v1.3/MODIS_NDVI.xml'
-const NDVI_TILE_ROOT = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_NDVI_8Day/default'
 const GIBS_ROOT = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best'
 const MUR_COLORMAP_URL = 'https://gibs.earthdata.nasa.gov/colormaps/v1.3/GHRSST_Sea_Surface_Temperature.xml'
 const OCO2_COLORMAP_URL = 'https://gibs.earthdata.nasa.gov/colormaps/v1.3/OCO_Carbon_Dioxide_Total_Column_Average.xml'
 const OCO2_LAYER = 'OCO-2_Carbon_Dioxide_Total_Column_Average'
-const PLANETARY_STAC_ROOT = 'https://planetarycomputer.microsoft.com/api/stac/v1'
-const PLANETARY_SIGN_URL = 'https://planetarycomputer.microsoft.com/api/sas/v1/sign'
-const MODIS_EARTH_RADIUS = 6371007.181
 
 type PowerMetricKey = 'humidity' | 'specific-humidity' | 'precipitable-water' | 'cloud-cover' | 'solar-radiation' | 'longwave-radiation' | 'aerosol-depth' | 'surface-pressure' | 'air-temperature' | 'min-air-temperature' | 'max-air-temperature' | 'temperature-range' | 'wet-bulb-temperature' | 'dew-point' | 'soil-wetness' | 'land-evaporation' | 'transpiration-energy' | 'wind-speed-2m'
 const POWER_METRICS: Record<PowerMetricKey, { parameter: string; community: 'AG' | 'RE' }> = {
@@ -62,22 +54,6 @@ interface AnnualRasterValue {
   throughMonth?: number
 }
 
-interface PlanetarySample {
-  value: number
-  date: string
-  platform: string
-}
-
-interface PlanetaryAsset {
-  href: string
-}
-
-interface PlanetaryItem {
-  id: string
-  assets: Record<string, PlanetaryAsset | undefined>
-  properties: { platform?: string; start_datetime?: string; datetime?: string }
-}
-
 function dateCode(date: Date): string {
   return date.toISOString().slice(0, 10).replace(/-/g, '')
 }
@@ -90,110 +66,6 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 function yearToDateLabel(year: number, throughMonth: number): string {
   return `${year} YTD · Jan–${MONTH_NAMES[Math.max(0, Math.min(11, throughMonth - 1))]}`
-}
-
-function latestCompleteModisCompositeStart(year: number): Date {
-  const currentDate = new Date()
-  const referenceDate = year === currentDate.getUTCFullYear()
-    ? new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate() - 8))
-    : new Date(Date.UTC(year, 0, 1 + 8 * 22))
-  const yearStart = Date.UTC(year, 0, 1)
-  const dayOfYear = Math.max(0, Math.floor((referenceDate.getTime() - yearStart) / 86400000))
-  const compositeIndex = Math.max(0, Math.floor(dayOfYear / 8))
-  return new Date(Date.UTC(year, 0, 1 + compositeIndex * 8))
-}
-
-function latestCompleteModisCompositeDate(year: number): string {
-  return latestCompleteModisCompositeStart(year).toISOString().slice(0, 10)
-}
-
-async function loadNdviPalette(): Promise<Array<{ rgb: [number, number, number]; min: number; max: number }>> {
-  if (!ndviPaletteRequest) {
-    ndviPaletteRequest = fetch(NDVI_COLORMAP_URL)
-      .then(async (response) => {
-        if (!response.ok) throw new Error('NASA NDVI color scale is unavailable.')
-        const xml = await response.text()
-        const section = xml.match(/<ColorMap\s+title="Vegetation Indices"[^>]*>([\s\S]*?)<\/ColorMap>/)?.[1]
-        if (!section) throw new Error('NASA NDVI color scale has an unexpected format.')
-        const entries = [...section.matchAll(/<ColorMapEntry\s+([^>]+?)\s*\/>/g)].flatMap((match) => {
-          const attributes = Object.fromEntries([...match[1].matchAll(/([\w]+)="([^"]*)"/g)].map((entry) => [entry[1], entry[2]]))
-          const rgb = attributes.rgb?.split(',').map(Number)
-          const range = attributes.value?.match(/\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/)
-          if (!rgb || rgb.length !== 3 || !range || attributes.nodata === 'true' || attributes.transparent === 'true') return []
-          return [{ rgb: rgb as [number, number, number], min: Number(range[1]), max: Number(range[2]) }]
-        })
-        if (!entries.length) throw new Error('NASA NDVI color scale contains no usable values.')
-        return entries
-      })
-      .catch((error) => {
-        ndviPaletteRequest = null
-        throw error
-      })
-  }
-  return ndviPaletteRequest
-}
-
-async function sampleModisNdvi(point: GeoPoint, year: number): Promise<{ value: number; date: string } | null> {
-  const cacheKey = `${year}:${latestCompleteModisCompositeDate(year)}:${point.latitude.toFixed(2)}:${point.longitude.toFixed(2)}`
-  const cached = ndviCache.get(cacheKey)
-  if (cached) return cached
-  const request = sampleModisNdviTile(point, year).catch((error: unknown) => {
-    ndviCache.delete(cacheKey)
-    throw error
-  })
-  ndviCache.set(cacheKey, request)
-  while (ndviCache.size > 180) ndviCache.delete(ndviCache.keys().next().value as string)
-  return request
-}
-
-async function sampleModisNdviTile(point: GeoPoint, year: number): Promise<{ value: number; date: string } | null> {
-  const zoom = 9
-  const tileCount = 2 ** zoom
-  const latitude = Math.max(-85.0511, Math.min(85.0511, point.latitude))
-  const sine = Math.sin(latitude * Math.PI / 180)
-  const worldX = ((point.longitude + 180) / 360) * tileCount
-  const worldY = (0.5 - Math.log((1 + sine) / (1 - sine)) / (4 * Math.PI)) * tileCount
-  const tileX = Math.max(0, Math.min(tileCount - 1, Math.floor(worldX)))
-  const tileY = Math.max(0, Math.min(tileCount - 1, Math.floor(worldY)))
-  const pixelX = Math.max(0, Math.min(255, Math.floor((worldX - tileX) * 256)))
-  const pixelY = Math.max(0, Math.min(255, Math.floor((worldY - tileY) * 256)))
-  if (year < 2000 || year > new Date().getUTCFullYear()) return null
-  const targetDate = latestCompleteModisCompositeStart(year)
-  const tileDates = [0, -8, -16, -24].map((offset) => {
-    const date = new Date(targetDate)
-    date.setUTCDate(date.getUTCDate() + offset)
-    return date.toISOString().slice(0, 10)
-  })
-  const palette = await loadNdviPalette()
-  let tileAvailable = false
-
-  for (const date of tileDates) {
-    const response = await fetch(`${NDVI_TILE_ROOT}/${date}/GoogleMapsCompatible_Level9/${zoom}/${tileX}/${tileY}.png`, { signal: AbortSignal.timeout(10000) })
-    if (!response.ok) continue
-    tileAvailable = true
-    const bitmap = await createImageBitmap(await response.blob())
-    try {
-      const canvas = document.createElement('canvas')
-      canvas.width = bitmap.width
-      canvas.height = bitmap.height
-      const context = canvas.getContext('2d', { willReadFrequently: true })
-      if (!context) throw new Error('The browser could not read the NASA map pixel.')
-      context.drawImage(bitmap, 0, 0)
-      const [red, green, blue, alpha] = context.getImageData(pixelX, pixelY, 1, 1).data
-      if (alpha < 128) continue
-      let closest: { distance: number; min: number; max: number } | null = null
-      for (const entry of palette) {
-        const distance = (red - entry.rgb[0]) ** 2 + (green - entry.rgb[1]) ** 2 + (blue - entry.rgb[2]) ** 2
-        if (!closest || distance < closest.distance) closest = { distance, min: entry.min, max: entry.max }
-        if (distance === 0) break
-      }
-      if (closest && closest.distance <= 40) return { value: (closest.min + closest.max) / 2, date }
-    } finally {
-      bitmap.close()
-    }
-  }
-  if (!tileAvailable) throw new Error('NASA MODIS vegetation imagery is not available for the selected dates.')
-  return null
 }
 
 function attributesOf(tag: string): Record<string, string> {
@@ -299,139 +171,6 @@ async function sampleNasaPointTile(
   if (image.data[offset + 3] < 128) return null
   const value = colorBinValue(image.data[offset], image.data[offset + 1], image.data[offset + 2], bins)
   return value === null ? null : { value, date }
-}
-
-function modisSampleTargetDate(year: number, snow: boolean): Date {
-  const currentDate = new Date()
-  const isCurrentYear = year === currentDate.getUTCFullYear()
-  const target = isCurrentYear
-    ? new Date(currentDate)
-    : new Date(Date.UTC(year, 11, 31))
-  // Daily snow products usually lag a few days; 8-day products need a wider
-  // margin. The catalog search then chooses the closest valid composite.
-  target.setUTCDate(target.getUTCDate() - (snow ? 3 : 8))
-  return target
-}
-
-function sinusoidalCoordinates(point: GeoPoint): [number, number] {
-  const latitude = point.latitude * Math.PI / 180
-  const longitude = point.longitude * Math.PI / 180
-  return [MODIS_EARTH_RADIUS * longitude * Math.cos(latitude), MODIS_EARTH_RADIUS * latitude]
-}
-
-async function planetaryAssetValue(href: string, point: GeoPoint): Promise<number | null> {
-  const signResponse = await fetch(`${PLANETARY_SIGN_URL}?href=${encodeURIComponent(href)}`, { signal: AbortSignal.timeout(15000) })
-  if (!signResponse.ok) throw new Error('Microsoft Planetary Computer could not sign the NASA raster request.')
-  const signed = await signResponse.json() as { href?: string }
-  if (!signed.href) throw new Error('Microsoft Planetary Computer returned no signed NASA raster URL.')
-
-  const { fromUrl } = await import('geotiff')
-  const tiff = await fromUrl(signed.href)
-  const image = await tiff.getImage()
-  const [x, y] = sinusoidalCoordinates(point)
-  const [originX, originY] = image.getOrigin()
-  const [resolutionX, resolutionY] = image.getResolution()
-  const pixelX = Math.floor((x - originX) / resolutionX)
-  const pixelY = Math.floor((y - originY) / resolutionY)
-  if (pixelX < 0 || pixelY < 0 || pixelX >= image.getWidth() || pixelY >= image.getHeight()) return null
-  const rasters = await image.readRasters({ window: [pixelX, pixelY, pixelX + 1, pixelY + 1] }) as unknown as ArrayLike<ArrayLike<number>>
-  const raw = Number(rasters[0]?.[0])
-  return Number.isFinite(raw) ? raw : null
-}
-
-async function searchPlanetaryItems(collection: string, point: GeoPoint, target: Date, windowDays: number): Promise<PlanetaryItem[]> {
-  const start = new Date(target.getTime() - windowDays * 86400000).toISOString().slice(0, 10)
-  const end = new Date(target.getTime() + windowDays * 86400000).toISOString().slice(0, 10)
-  const bounds = [
-    Math.max(-180, point.longitude - 0.015),
-    Math.max(-90, point.latitude - 0.015),
-    Math.min(180, point.longitude + 0.015),
-    Math.min(90, point.latitude + 0.015),
-  ]
-  const query = new URLSearchParams({
-    collections: collection,
-    bbox: bounds.join(','),
-    datetime: `${start}/${end}`,
-    limit: '100',
-  })
-  const response = await fetch(`${PLANETARY_STAC_ROOT}/search?${query}`, { signal: AbortSignal.timeout(20000) })
-  if (!response.ok) throw new Error('The NASA MODIS catalog is unavailable right now. Try again shortly.')
-  const data = await response.json() as { features?: PlanetaryItem[] }
-  return (data.features ?? []).sort((left, right) => {
-    const leftDate = Date.parse(left.properties.start_datetime ?? left.properties.datetime ?? '')
-    const rightDate = Date.parse(right.properties.start_datetime ?? right.properties.datetime ?? '')
-    const temporalDifference = Math.abs(leftDate - target.getTime()) - Math.abs(rightDate - target.getTime())
-    if (Math.abs(temporalDifference) > 0) return temporalDifference
-    return Number((right.properties.platform ?? '').toLowerCase() === 'terra')
-      - Number((left.properties.platform ?? '').toLowerCase() === 'terra')
-  })
-}
-
-async function samplePlanetaryProduct(
-  key: 'land-temperature' | 'productivity' | 'snow',
-  year: number,
-  point: GeoPoint,
-): Promise<PlanetarySample | null> {
-  const cacheKey = `${key}:${year}:${point.latitude.toFixed(3)}:${point.longitude.toFixed(3)}`
-  const cached = planetaryRasterCache.get(cacheKey)
-  if (cached) return cached
-  const request = (async (): Promise<PlanetarySample | null> => {
-    const snow = key === 'snow'
-    const target = modisSampleTargetDate(year, snow)
-    const collection = key === 'land-temperature' ? 'modis-11A2-061'
-      : key === 'productivity' ? 'modis-17A2HGF-061'
-        : 'modis-10A1-061'
-    const dataAsset = key === 'land-temperature' ? 'LST_Day_1km'
-      : key === 'productivity' ? 'Gpp_500m'
-        : 'NDSI_Snow_Cover'
-    const qualityAsset = key === 'land-temperature' ? 'QC_Day'
-      : key === 'productivity' ? 'Psn_QC_500m'
-        : 'NDSI_Snow_Cover_Basic_QA'
-    const items = await searchPlanetaryItems(collection, point, target, snow ? 12 : 28)
-    for (const item of items) {
-      const dataHref = item.assets[dataAsset]?.href
-      if (!dataHref) continue
-      const raw = await planetaryAssetValue(dataHref, point).catch(() => null)
-      if (raw === null) continue
-
-      if (key === 'land-temperature') {
-        if (raw <= 0 || raw === 65535) continue
-        const qualityHref = item.assets[qualityAsset]?.href
-        if (qualityHref) {
-          const quality = await planetaryAssetValue(qualityHref, point).catch(() => null)
-          if (quality === null || (quality & 0b11) > 1 || ((quality >> 6) & 0b11) > 1) continue
-        }
-        const celsius = raw * 0.02 - 273.15
-        if (celsius < -90 || celsius > 80) continue
-        return { value: celsius, date: (item.properties.start_datetime ?? item.properties.datetime ?? '').slice(0, 10), platform: item.properties.platform ?? 'MODIS' }
-      }
-
-      if (key === 'productivity') {
-        if (raw < 0 || raw > 30000 || raw >= 32761) continue
-        const qualityHref = item.assets[qualityAsset]?.href
-        if (qualityHref) {
-          const quality = await planetaryAssetValue(qualityHref, point).catch(() => null)
-          if (quality === null || (quality & 0b1) !== 0) continue
-        }
-        return { value: raw * 0.0001, date: (item.properties.start_datetime ?? item.properties.datetime ?? '').slice(0, 10), platform: item.properties.platform ?? 'MODIS' }
-      }
-
-      if (raw < 0 || raw > 100) continue
-      const qualityHref = item.assets[qualityAsset]?.href
-      if (qualityHref) {
-        const quality = await planetaryAssetValue(qualityHref, point).catch(() => null)
-        if (quality === null || quality > 2) continue
-      }
-      return { value: raw, date: (item.properties.start_datetime ?? item.properties.datetime ?? '').slice(0, 10), platform: item.properties.platform ?? 'MODIS' }
-    }
-    return null
-  })().catch((error: unknown) => {
-    planetaryRasterCache.delete(cacheKey)
-    throw error
-  })
-  planetaryRasterCache.set(cacheKey, request)
-  while (planetaryRasterCache.size > 240) planetaryRasterCache.delete(planetaryRasterCache.keys().next().value as string)
-  return request
 }
 
 function monthSampleDates(year: number, lastMonth: number): Array<{ month: number; date: string }> {
@@ -954,61 +693,6 @@ async function loadCo2Dataset(year: number): Promise<DatasetPayload> {
   }
 }
 
-async function loadModisPointDataset(
-  key: 'land-temperature' | 'productivity' | 'snow',
-  year: number,
-  point?: GeoPoint,
-): Promise<DatasetPayload> {
-  const definition = datasets[key]
-  if (!point) {
-    return {
-      measurements: [],
-      source: definition.source,
-      sourceUrl: definition.sourceUrl,
-      status: definition.status,
-      note: 'Pin a location to read this NASA MODIS product at the selected point.',
-    }
-  }
-  const lastYear = definition.yearEnd ?? new Date().getUTCFullYear()
-  if (year < (definition.yearStart ?? 2000) || year > lastYear) {
-    return {
-      measurements: [],
-      source: definition.source,
-      sourceUrl: definition.sourceUrl,
-      status: definition.status,
-      note: `NASA MODIS ${definition.name.toLowerCase()} coverage for this product is currently listed from ${definition.yearStart ?? 2000} through ${lastYear}.`,
-    }
-  }
-  try {
-    const sample = await samplePlanetaryProduct(key, year, point)
-    if (!sample) throw new Error(`NASA MODIS has no valid quality-screened ${definition.name.toLowerCase()} pixel in the latest composite window at this point. Try a nearby point.`)
-    const platform = sample.platform.toUpperCase()
-    return {
-      measurements: [{
-        year,
-        value: sample.value,
-        chartX: year,
-        date: sample.date,
-        label: `${sample.date} · ${platform}`,
-        latitude: point.latitude,
-        longitude: point.longitude,
-      }],
-      source: definition.source,
-      sourceUrl: definition.sourceUrl,
-      status: definition.status,
-      note: `${definition.name} sampled from the NASA ${platform} MODIS cloud-optimized GeoTIFF via Microsoft Planetary Computer at ${point.latitude.toFixed(3)}°, ${point.longitude.toFixed(3)}° on ${sample.date}. The reported value uses the NASA product scale factor and quality flags.`,
-    }
-  } catch (error) {
-    return {
-      measurements: [],
-      source: definition.source,
-      sourceUrl: definition.sourceUrl,
-      status: definition.status,
-      note: error instanceof Error ? error.message : `NASA MODIS could not sample ${definition.name.toLowerCase()} at this point.`,
-    }
-  }
-}
-
 export async function loadDataset(
   key: DatasetKey,
   options?: { mode?: WeatherMode; locationId?: string; year?: number; point?: GeoPoint },
@@ -1024,44 +708,5 @@ export async function loadDataset(
   if (key === 'temperature') return loadTemperatureDataset()
   if (key === 'co2') return loadCo2Dataset(year)
   if (key === 'ocean') return loadOceanDataset(year, point)
-  if (key === 'land-temperature' || key === 'productivity' || key === 'snow') return loadModisPointDataset(key, year, point)
-  if (key === 'vegetation') {
-    if (!point) {
-      return {
-        measurements: [],
-        source: datasets.vegetation.source,
-        sourceUrl: datasets.vegetation.sourceUrl,
-        status: datasets.vegetation.status,
-      note: 'Pin a land location to sample the latest available NASA Terra MODIS 8-day composite.',
-      }
-    }
-    try {
-      const sample = await sampleModisNdvi(point, year)
-      if (!sample) throw new Error('NASA MODIS has no valid NDVI pixel at this point or date. Water, cloud, and masked areas stay unavailable.')
-      return {
-        measurements: [{
-          year,
-          value: sample.value,
-          chartX: year,
-          label: sample.date,
-          date: sample.date,
-          latitude: point.latitude,
-          longitude: point.longitude,
-        }],
-        source: datasets.vegetation.source,
-        sourceUrl: datasets.vegetation.sourceUrl,
-        status: datasets.vegetation.status,
-        note: 'Approximate center of the NASA Terra MODIS GIBS color bin at ' + point.latitude.toFixed(2) + '°, ' + point.longitude.toFixed(2) + '°. Water, cloud, masked pixels, and unavailable composites stay blank.',
-      }
-    } catch (error) {
-      return {
-        measurements: [],
-        source: datasets.vegetation.source,
-        sourceUrl: datasets.vegetation.sourceUrl,
-        status: datasets.vegetation.status,
-        note: error instanceof Error ? error.message : 'NASA MODIS NDVI could not sample this point in the latest composite window.',
-      }
-    }
-  }
   throw new Error('Unsupported dataset.')
 }

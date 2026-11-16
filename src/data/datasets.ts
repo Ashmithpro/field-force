@@ -110,65 +110,6 @@ export const datasets: Record<DatasetKey, DatasetDefinition> = {
     yearStart: 2014,
     yearEnd: new Date().getUTCFullYear(),
   },
-  vegetation: {
-    key: 'vegetation',
-    name: 'Vegetation',
-    shortName: 'MODIS NDVI',
-    unit: 'NDVI index',
-    description: 'The latest complete NASA Terra MODIS 8-day Normalized Difference Vegetation Index (NDVI) composite. Cloud, water, and masked pixels have no reading.',
-    source: 'NASA Terra MODIS NDVI · NASA GIBS',
-    sourceUrl: 'https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/MODIS_Terra_NDVI_8Day.json',
-    status: 'NASA DATA',
-    color: '#9bd88b',
-    min: 0.36,
-    max: 0.62,
-    yearStart: 2000,
-  },
-  'land-temperature': {
-    key: 'land-temperature',
-    name: 'Land surface temperature',
-    shortName: 'MODIS land temperature',
-    unit: '°C',
-    description: 'NASA MODIS 8-day daytime land-surface temperature, sampled at the pin from a quality-screened 1 km NASA product pixel. The reading is the surface skin temperature, not the air temperature. Microsoft Planetary Computer distributes the NASA LP DAAC GeoTIFF.',
-    source: 'NASA MODIS MOD11A2 v061 · Microsoft Planetary Computer',
-    sourceUrl: 'https://lpdaac.usgs.gov/products/mod11a2v061/',
-    status: 'NASA DATA',
-    color: '#ffad70',
-    min: -50,
-    max: 70,
-    yearStart: 2000,
-    yearEnd: new Date().getUTCFullYear(),
-  },
-  productivity: {
-    key: 'productivity',
-    name: 'Plant productivity',
-    shortName: 'MODIS plant growth',
-    unit: 'kg C/m²/8d',
-    description: 'NASA MODIS 8-day Gap-Filled Gross Primary Productivity (MOD17A2HGF v061). A quality-screened 500 m pixel is sampled at the pin from a NASA LP DAAC cloud-optimized GeoTIFF served through Microsoft Planetary Computer.',
-    source: 'NASA MODIS MOD17A2HGF v061 · Microsoft Planetary Computer',
-    sourceUrl: 'https://lpdaac.usgs.gov/products/mod17a2hgfv061/',
-    status: 'NASA DATA',
-    color: '#8bd68a',
-    min: 0,
-    max: 0.4,
-    yearStart: 2000,
-    yearEnd: new Date().getUTCFullYear(),
-  },
-  snow: {
-    key: 'snow',
-    name: 'Snow cover',
-    shortName: 'MODIS snow cover',
-    unit: '% cover',
-    description: 'NASA MODIS daily snow-cover percentage (MOD10A1 v061), read at the pin from the latest available quality-screened 500 m NASA LP DAAC GeoTIFF served through Microsoft Planetary Computer.',
-    source: 'NASA MODIS MOD10A1 v061 · Microsoft Planetary Computer',
-    sourceUrl: 'https://lpdaac.usgs.gov/products/mod10a1v061/',
-    status: 'NASA DATA',
-    color: '#9ac8ff',
-    min: 0,
-    max: 100,
-    yearStart: 2000,
-    yearEnd: new Date().getUTCFullYear(),
-  },
   humidity: {
     key: 'humidity',
     name: 'Relative humidity',
@@ -437,11 +378,7 @@ export function formatValue(value: number, key: DatasetKey, weatherMode: Weather
     return `${value.toFixed(1)} mm/day`
   }
   if (key === 'co2') return `${value.toFixed(1)} ppm`
-  if (key === 'vegetation') return value.toFixed(2)
   if (key === 'ocean') return `${value.toFixed(1)} °C`
-  if (key === 'land-temperature') return `${value.toFixed(1)} °C`
-  if (key === 'productivity') return `${value.toFixed(3)} kg C/m²/8d`
-  if (key === 'snow') return `${value.toFixed(0)}%`
   if (key === 'humidity' || key === 'cloud-cover') return `${value.toFixed(1)}%`
   if (key === 'solar-radiation') return `${value.toFixed(2)} MJ/m²/day`
   if (key === 'longwave-radiation') return `${value.toFixed(1)} MJ/m²/day`

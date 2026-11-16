@@ -58,12 +58,9 @@ function readingLevel(dataset: DatasetKey, mode: WeatherMode, value: number, win
   }
   if (dataset === 'temperature') return clamp((value + 2) / 4)
   if (dataset === 'ocean') return clamp((value + 2) / 37)
-  if (dataset === 'land-temperature') return clamp((value + 30) / 100)
   if (['air-temperature', 'min-air-temperature', 'max-air-temperature', 'wet-bulb-temperature', 'dew-point'].includes(dataset)) return clamp((value + 50) / 100)
   if (dataset === 'temperature-range') return clamp(value / 35)
-  if (dataset === 'snow' || dataset === 'humidity' || dataset === 'cloud-cover') return clamp(value / 100)
-  if (dataset === 'vegetation') return clamp(value)
-  if (dataset === 'productivity') return clamp(value / 0.4)
+  if (dataset === 'humidity' || dataset === 'cloud-cover') return clamp(value / 100)
   if (dataset === 'transpiration-energy' || dataset === 'longwave-radiation') return clamp(value / 35)
   if (dataset === 'solar-radiation') return clamp(value / 30)
   if (dataset === 'co2') return clamp((value - 380) / 120)

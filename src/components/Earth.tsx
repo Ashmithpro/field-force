@@ -124,16 +124,6 @@ function airsMonthlyMapDate(year: number): string | null {
   return year === currentYear ? monthStartDaysAgo(3) : `${year}-06-01`
 }
 
-function modisDate(year: number): string | null {
-  const current = new Date()
-  if (year < 2000 || year > current.getUTCFullYear()) return null
-  const anchor = year === current.getUTCFullYear()
-    ? new Date(Date.UTC(year, current.getUTCMonth(), current.getUTCDate() - 8))
-    : new Date(Date.UTC(year, 5, 26))
-  const index = Math.max(0, Math.floor((anchor.getTime() - Date.UTC(year, 0, 1)) / 86400000 / 8))
-  return new Date(Date.UTC(year, 0, 1 + index * 8)).toISOString().slice(0, 10)
-}
-
 const RASTER_LAYERS: RasterLayerDefinition[] = [
   {
     datasets: ['temperature'],
@@ -176,54 +166,6 @@ const RASTER_LAYERS: RasterLayerDefinition[] = [
       ? year === new Date().getUTCFullYear() ? dateDaysAgo(120) : `${year}-06-01`
       : null,
     defaultDate: () => dateDaysAgo(120),
-  },
-  {
-    datasets: ['vegetation'],
-    sourceId: 'nasa-modis-ndvi',
-    layerId: 'nasa-modis-ndvi-layer',
-    gibsLayer: 'MODIS_Terra_NDVI_8Day',
-    matrixSet: 'GoogleMapsCompatible_Level9',
-    maxZoom: 9,
-    attribution: 'NASA Terra MODIS NDVI / NASA GIBS',
-    opacity: 0.94,
-    date: modisDate,
-    defaultDate: () => dateDaysAgo(8),
-  },
-  {
-    datasets: ['land-temperature'],
-    sourceId: 'nasa-modis-land-temperature',
-    layerId: 'nasa-modis-land-temperature-layer',
-    gibsLayer: 'MODIS_Terra_L3_Land_Surface_Temp_8Day_Day',
-    matrixSet: 'GoogleMapsCompatible_Level9',
-    maxZoom: 9,
-    attribution: 'NASA Terra MODIS land-surface temperature / NASA GIBS',
-    opacity: 0.95,
-    date: modisDate,
-    defaultDate: () => dateDaysAgo(8),
-  },
-  {
-    datasets: ['productivity'],
-    sourceId: 'nasa-modis-productivity',
-    layerId: 'nasa-modis-productivity-layer',
-    gibsLayer: 'MODIS_Terra_L4_Gross_Primary_Productivity_8Day',
-    matrixSet: 'GoogleMapsCompatible_Level9',
-    maxZoom: 9,
-    attribution: 'NASA Terra MODIS gross primary productivity / NASA GIBS',
-    opacity: 0.96,
-    date: modisDate,
-    defaultDate: () => dateDaysAgo(8),
-  },
-  {
-    datasets: ['snow'],
-    sourceId: 'nasa-modis-snow-cover',
-    layerId: 'nasa-modis-snow-cover-layer',
-    gibsLayer: 'MODIS_Terra_NDSI_Snow_Cover',
-    matrixSet: 'GoogleMapsCompatible_Level9',
-    maxZoom: 9,
-    attribution: 'NASA Terra MODIS snow cover / NASA GIBS',
-    opacity: 0.95,
-    date: (year) => year >= 2000 && year <= new Date().getUTCFullYear() ? `${year}-01-15` : null,
-    defaultDate: () => dateDaysAgo(2),
   },
   {
     datasets: ['humidity'],
@@ -702,9 +644,6 @@ export default function Earth({
               'raster-opacity': 0,
               'raster-opacity-transition': { duration: 450 },
               'raster-fade-duration': 200,
-              ...(layer.sourceId === 'nasa-modis-land-temperature' ? { 'raster-saturation': 0.18, 'raster-contrast': 0.12 } : {}),
-              ...(layer.sourceId === 'nasa-modis-productivity' ? { 'raster-saturation': 0.22, 'raster-contrast': 0.14 } : {}),
-              ...(layer.sourceId === 'nasa-modis-snow-cover' ? { 'raster-saturation': 0.08, 'raster-contrast': 0.14 } : {}),
               ...(layer.sourceId === 'nasa-oco2-co2' ? { 'raster-resampling': 'nearest' as const } : {}),
             },
           }, firstOverlayLayer)

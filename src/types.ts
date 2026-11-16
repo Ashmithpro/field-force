@@ -1,4 +1,4 @@
-export type DatasetKey = 'temperature' | 'weather' | 'ocean' | 'co2' | 'vegetation' | 'land-temperature' | 'productivity' | 'snow' | 'humidity' | 'specific-humidity' | 'cloud-cover' | 'solar-radiation' | 'longwave-radiation' | 'aerosol-depth' | 'surface-pressure' | 'air-temperature' | 'min-air-temperature' | 'max-air-temperature' | 'temperature-range' | 'wet-bulb-temperature' | 'dew-point' | 'precipitable-water' | 'soil-wetness' | 'land-evaporation' | 'transpiration-energy' | 'wind-speed-2m'
+export type DatasetKey = 'temperature' | 'weather' | 'ocean' | 'co2' | 'humidity' | 'specific-humidity' | 'cloud-cover' | 'solar-radiation' | 'longwave-radiation' | 'aerosol-depth' | 'surface-pressure' | 'air-temperature' | 'min-air-temperature' | 'max-air-temperature' | 'temperature-range' | 'wet-bulb-temperature' | 'dew-point' | 'precipitable-water' | 'soil-wetness' | 'land-evaporation' | 'transpiration-energy' | 'wind-speed-2m'
 export type WeatherMode = 'rain' | 'wind' | 'storm'
 
 export interface WeatherLocation {
